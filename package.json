@@ -1,6 +1,7 @@
 {
   "name": "tanstack_start_ts",
   "private": true,
+  "version": "1.0.0",
   "main": "electron/main.cjs",
   "sideEffects": false,
   "type": "module",
@@ -10,7 +11,8 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "package:mac": "node scripts/package-mac.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"
