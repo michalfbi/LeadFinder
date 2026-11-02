@@ -154,6 +154,12 @@ export type MessageVars = {
   problem_strony?: string | null;
   /** Wolna domena .pl znaleziona przez asystenta domen — haczyk w ofercie. */
   wolna_domena?: string | null;
+  /** Liczba opinii w Google (Snajper). */
+  liczba_opinii?: number | string | null;
+  /** Lokalny konkurent z nowoczesną stroną (Snajper). */
+  konkurent?: string | null;
+  /** Konkretny problem techniczny wykryty przez audytor (Snajper). */
+  diagnoza_tech?: string | null;
 };
 
 /** Zwrot do SMS-a opisujący problem ze stroną firmy (zmienna {problem_strony}). */
@@ -347,4 +353,212 @@ export function useSmsHref(phone: string, body: string): string {
     setHref(smsHref(phone, body));
   }, [phone, body]);
   return href;
+}
+
+/* ------------------------------------------------------------------ */
+/* Szablony Snajpera — dobór wg kategorii intencji                      */
+/* ------------------------------------------------------------------ */
+
+export type SniperIntent =
+  | "EXPIRED_OR_BROKEN_SITE"
+  | "PAID_AD_NO_SITE"
+  | "SOCIAL_OR_FREE_BUILDER"
+  | "HIGH_REVIEWS_NO_SITE"
+  | "OUTDATED_NO_SSL_MOBILE"
+  | "NEW_CEIDG_HIGH_TICKET"
+  | "NO_WEBSITE";
+
+/** Formy grzecznościowe dopasowane do płci adresata; bez pewnej płci — „Państwo”. */
+type Forms = {
+  /** Pan / Pani / Państwo */
+  pan: string;
+  /** Pana / Pani / Państwa */
+  pana: string;
+  /** ma / ma / mają */
+  ma: string;
+  /** inwestuje / inwestuje / inwestują */
+  inwestuje: string;
+  /** płaci / płaci / płacą */
+  placi: string;
+  /** kieruje / kieruje / kierują */
+  kieruje: string;
+};
+
+export type SniperGender = "kobieta" | "mezczyzna" | null;
+
+export function sniperForms(gender: SniperGender): Forms {
+  if (gender === "mezczyzna") return { pan: "Pan", pana: "Pana", ma: "ma", inwestuje: "inwestuje", placi: "płaci", kieruje: "kieruje" };
+  if (gender === "kobieta") return { pan: "Pani", pana: "Pani", ma: "ma", inwestuje: "inwestuje", placi: "płaci", kieruje: "kieruje" };
+  return { pan: "Państwo", pana: "Państwa", ma: "mają", inwestuje: "inwestują", placi: "płacą", kieruje: "kierują" };
+}
+
+export const SNIPER_TEMPLATE_LABELS: Record<SniperIntent, string> = {
+  EXPIRED_OR_BROKEN_SITE: "🎯 Snajper · Awaria strony",
+  PAID_AD_NO_SITE: "🎯 Snajper · Płatne OLX bez strony",
+  SOCIAL_OR_FREE_BUILDER: "🎯 Snajper · Tylko FB / kreator",
+  HIGH_REVIEWS_NO_SITE: "🎯 Snajper · Lider opinii bez strony",
+  OUTDATED_NO_SSL_MOBILE: "🎯 Snajper · Stara strona / brak SSL",
+  NEW_CEIDG_HIGH_TICKET: "🎯 Snajper · Nowa firma CEIDG",
+  NO_WEBSITE: "🎯 Snajper · Brak strony",
+};
+
+export type SniperMessageInput = {
+  intent: SniperIntent;
+  gender: SniperGender;
+  vars: MessageVars;
+  /** Dopisuje zdanie z możliwością rezygnacji (odpowiedź „NIE”). */
+  optOut?: boolean | undefined;
+};
+
+/**
+ * Zwraca szablon Spintax dla kategorii intencji. Zdania z faktami (domena,
+ * opinie, konkurent, diagnoza) pojawiają się tylko wtedy, gdy fakt jest znany —
+ * SMS nigdy nie twierdzi czegoś, czego audytor nie sprawdził.
+ */
+export function sniperTemplate(input: SniperMessageInput): string {
+  const f = sniperForms(input.gender);
+  const v = input.vars;
+  const hasDomain = Boolean(v.wolna_domena);
+  const reviews = Number(v.liczba_opinii);
+  const hasReviews = reviews > 0 && Number(String(v.ocena).replace(",", ".")) > 0;
+  const hasRival = Boolean(v.konkurent);
+  const hello = "{Dzień dobry|Witam}{zwrot}";
+  const price = "(1490 zł na gotowo, 0 zł zaliczki)";
+  const domainAsk = hasDomain
+    ? `Domena {wolna_domena} jest wolna – mogę {przygotować darmowy projekt, jak mogłaby wyglądać ${f.pana} strona|podesłać niezobowiązującą wizualizację strony pod tym adresem}?`
+    : `Mogę {przygotować darmowy projekt, jak mogłaby wyglądać ${f.pana} strona|podesłać niezobowiązującą wizualizację strony}?`;
+  const reviewsLine = hasReviews
+    ? ` ${capitalizeFirst(f.ma)} ${f.pan} świetne opinie ({liczba_opinii} ${reviewsNoun(reviews)}, średnia {ocena}⭐).`
+    : "";
+
+  let body: string;
+  switch (input.intent) {
+    case "PAID_AD_NO_SITE":
+      body =
+        `${hello}, trafiłem na ${f.pana} wyróżnione ogłoszenie na OLX ({branza}, {miasto}). ` +
+        `{Widzę, że ${f.inwestuje} ${f.pan} w promocję, ale w opisie brakuje linku do własnej strony z realizacjami|` +
+        `${capitalizeFirst(f.placi)} ${f.pan} za wyróżnienia, a klienci nie mają gdzie zobaczyć pełnego portfolio}. ` +
+        `Robię strony pod klucz ${price}. ${domainAsk}`;
+      break;
+    case "HIGH_REVIEWS_NO_SITE":
+      body =
+        `${hello}, trafiłem na {nazwa} w Mapach Google ({miasto}).${reviewsLine} ` +
+        (hasRival
+          ? "W wizytówce brakuje jednak własnej strony www, a np. {konkurent} już ją ma. "
+          : "W wizytówce brakuje jednak własnej strony www, więc część klientów może wybierać konkurencję. ") +
+        `Robię strony pod klucz ${price}. ${domainAsk}`;
+      break;
+    case "SOCIAL_OR_FREE_BUILDER":
+      body =
+        `${hello}, trafiłem na {nazwa} ({miasto}).${reviewsLine} ` +
+        `Widzę, że ${f.kieruje} ${f.pan} klientów {diagnoza_tech} zamiast na własną stronę z domeną. ` +
+        `Robię strony pod klucz ${price}. ${domainAsk}`;
+      break;
+    case "EXPIRED_OR_BROKEN_SITE":
+    case "OUTDATED_NO_SSL_MOBILE":
+      body =
+        `${hello}, sprawdzałem stronę firmy {nazwa} ({miasto}) i widzę, że {diagnoza_tech}. ` +
+        (hasRival
+          ? "Klienci z Google mogą przez to wybierać konkurencję, np. {konkurent}. "
+          : "Klienci z Google mogą przez to rezygnować z kontaktu. ") +
+        `Mogę postawić nową, szybką stronę pod klucz ${price} – {podesłać darmowy projekt nowej wersji|pokazać, jak mogłaby wyglądać}?`;
+      break;
+    case "NEW_CEIDG_HIGH_TICKET":
+      body =
+        `${hello}, gratuluję założenia firmy {nazwa}! Klienci w branży {branza} szukają wykonawców głównie w Google. ` +
+        `Robię strony pod klucz ${price}. ${domainAsk}`;
+      break;
+    case "NO_WEBSITE":
+    default:
+      body =
+        `${hello}, nie znalazłem strony internetowej firmy {nazwa} ({miasto}).${reviewsLine} ` +
+        `Robię strony dla lokalnych firm ${price}. ${domainAsk}`;
+      break;
+  }
+  if (input.optOut !== false) {
+    body += " Jeśli nie, wystarczy odpisać NIE – nie napiszę ponownie.";
+  }
+  return body;
+}
+
+/** „1 recenzja”, „3 recenzje”, „12 recenzji”, „73 recenzje”. */
+function reviewsNoun(n: number): string {
+  if (n === 1) return "recenzja";
+  const lastTwo = n % 100;
+  const last = n % 10;
+  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return "recenzje";
+  return "recenzji";
+}
+
+function capitalizeFirst(value: string): string {
+  return value ? value[0]!.toLocaleUpperCase("pl") + value.slice(1) : value;
+}
+
+/** Deterministyczny wariant parsera Spintax — wybory z podanego generatora liczb. */
+function spinSeeded(s: string, chosen: string[], rand: () => number): string {
+  const group = findSpintaxGroup(s);
+  if (!group) return s;
+  const [start, end] = group;
+  const inner = s.slice(start + 1, end);
+  const options = splitSpintaxOptions(inner);
+  if (options.length === 1) {
+    return s.slice(0, end + 1) + spinSeeded(s.slice(end + 1), chosen, rand);
+  }
+  const pick = options[Math.floor(rand() * options.length)]!;
+  const spun = spinSeeded(pick, chosen, rand);
+  chosen.push(spun);
+  return s.slice(0, start) + spun + spinSeeded(s.slice(end + 1), chosen, rand);
+}
+
+function seededRandom(seed: string): () => number {
+  let h = 2166136261;
+  for (const ch of seed) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+/**
+ * Spintax z ziarnem: ten sam tekst i to samo ziarno (np. id leada) dają zawsze
+ * tę samą kombinację — podgląd w UI jest dokładnie tym, co wyjdzie SMS-em.
+ */
+export function spinSpintaxSeeded(input: string, seed: string): { text: string; signature: string } {
+  const chosen: string[] = [];
+  const text = spinSeeded(input, chosen, seededRandom(seed));
+  return { text, signature: chosen.map((c) => `[${c}]`).join(" + ") };
+}
+
+/** Liczba części SMS: GSM-7 160/153 znaki, z polskimi znakami (UCS-2) 70/67. */
+export function smsSegments(text: string): { chars: number; segments: number; unicode: boolean } {
+  const gsm = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\[~\]|€]*$/;
+  const chars = [...text].length;
+  const unicode = !gsm.test(text);
+  const single = unicode ? 70 : 160;
+  const multi = unicode ? 67 : 153;
+  return { chars, unicode, segments: chars === 0 ? 0 : chars <= single ? 1 : Math.ceil(chars / multi) };
+}
+
+/** Pełny SMS Snajpera: szablon wg intencji → zmienne → deterministyczny Spintax. */
+export function buildSniperMessage(
+  input: SniperMessageInput & { seed: string },
+): { body: string; signature: string; templateId: string } {
+  const template = sniperTemplate(input);
+  const filled = fillTemplate(template, input.vars);
+  const spun = spinSpintaxSeeded(filled, input.seed);
+  const body = spun.text
+    .replace(/\(\s*,\s*/g, "(")
+    .replace(/\s*,\s*\)/g, ")")
+    .replace(/\s*\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.!?])/g, "$1")
+    .trim();
+  return { body, signature: `[TYP: ${SNIPER_TEMPLATE_LABELS[input.intent]}] ${spun.signature}`.trim(), templateId: SNIPER_TEMPLATE_LABELS[input.intent] };
 }

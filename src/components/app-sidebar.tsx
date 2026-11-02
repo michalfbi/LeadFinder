@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Database, MessageSquare, Bot, ChartNoAxesCombined, Settings2, Radar, Smartphone, PanelsTopLeft, ArrowUpRight, CircleHelp } from 'lucide-react';
+import { Search, Crosshair, Database, MessageSquare, Bot, ChartNoAxesCombined, Settings2, Radar, Smartphone, PanelsTopLeft, ArrowUpRight, CircleHelp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getBridge, type BulkQueueStatus } from '@/lib/bulk-send';
 import { openDesktopWidget, widgetBridge } from '@/lib/widget-bridge';
@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 export const APP_DESTINATIONS = [
   { id: 'search', label: 'Wyszukiwarka', icon: Search },
+  { id: 'sniper', label: '🎯 Snajper (Top 50)', icon: Crosshair },
   { id: 'base', label: 'Moja Baza', icon: Database },
   { id: 'message', label: 'Szablony & Wysyłka', icon: MessageSquare },
   { id: 'autopilot', label: 'Autopilot', icon: Bot },
@@ -47,7 +48,7 @@ export function AppSidebar({ active, onNavigate, hot }: {
       </div>
       <p className="mb-3 px-3 text-[11px] font-medium text-muted-foreground">PRZESTRZEŃ ROBOCZA</p>
       <nav aria-label="Nawigacja główna" className="space-y-1">
-        {APP_DESTINATIONS.map(({ id, label, icon: Icon }) => <Button key={id} variant="ghost" aria-label={label} onClick={() => onNavigate(id)} aria-current={active === id ? 'page' : undefined} className={`sidebar-item ${active === id ? 'sidebar-item-active' : ''}`}>
+        {APP_DESTINATIONS.map(({ id, label, icon: Icon }) => <Button key={id} variant="ghost" aria-label={label} onClick={() => onNavigate(id)} aria-current={active === id ? 'page' : undefined} className={`sidebar-item ${active === id ? 'sidebar-item-active' : ''} ${id === 'sniper' ? 'border border-amber-400/30 bg-amber-400/10 text-amber-200 backdrop-blur-xl' : ''}`}>
           <Icon className="size-[18px]" /><span className="flex-1 text-left">{label}</span>
           {id === 'base' && hot > 0 && <span className="rounded-full bg-destructive/20 px-2 py-0.5 text-xs tabular-nums text-destructive">{hot}</span>}
         </Button>)}

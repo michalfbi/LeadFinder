@@ -29,6 +29,13 @@
       "when": 1793404362262,
       "tag": "0003_leads_domain_email_verified",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793462400000,
+      "tag": "0004_leads_sniper_qualification",
+      "breakpoints": true
     }
   ]
 }

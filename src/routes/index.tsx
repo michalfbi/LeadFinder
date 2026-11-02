@@ -207,6 +207,7 @@ import {
   type BulkResult,
 } from "@/lib/bulk-send";
 import { SmsSpeedPanel } from '@/components/sms-speed-panel';
+import { SniperTab } from "@/components/sniper-tab";
 
 
 export const Route = createFileRoute("/")({
@@ -599,6 +600,7 @@ function Index() {
           <TabsContent value="search" forceMount className="data-[state=inactive]:hidden">
             <SearchTab onGoToTab={setActiveTab} remoteCommand={remoteCmd} />
           </TabsContent>
+          <TabsContent value="sniper" forceMount className="data-[state=inactive]:hidden"><SniperTab /></TabsContent>
           <TabsContent value="base"><BaseTab /></TabsContent>
           <TabsContent value="calls"><CallListTab /></TabsContent>
           <TabsContent value="offer"><OfferTab /></TabsContent>

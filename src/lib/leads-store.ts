@@ -56,6 +56,103 @@ export type LeadRow = {
   suggested_free_domain?: string | null;
   /** Adres e-mail przeszedł weryfikację składni i rekordów MX. */
   email_verified?: boolean;
+} & Partial<SniperQualification> & {
+  /** Moment kwalifikacji przez Snajpera Top 50 (ISO). */
+  sniper_scanned_at?: string | null;
+};
+
+/** Kategoria intencji zakupowej wyznaczona przez 5-stopniowe sito Snajpera. */
+export type IntentCategory =
+  | "EXPIRED_OR_BROKEN_SITE"
+  | "PAID_AD_NO_SITE"
+  | "SOCIAL_OR_FREE_BUILDER"
+  | "HIGH_REVIEWS_NO_SITE"
+  | "OUTDATED_NO_SSL_MOBILE"
+  | "NEW_CEIDG_HIGH_TICKET"
+  | "NO_WEBSITE";
+
+/** Wynik audytu technicznego strony (DOM/TLS/WHOIS) z procesu głównego Electrona. */
+export interface TechAuditResult {
+  httpStatus: number | null;
+  hasSsl: boolean;
+  hasMobileViewport: boolean;
+  /** np. "Wix Free", "Oferteo Subdomain", "Only Facebook/IG", "WordPress Old", "Brak". */
+  detectedCmsOrBuilder: string | null;
+  /** Meta Pixel (fbq / fbevents.js) lub Google Ads (gtag AW-) w kodzie strony. */
+  hasAdPixels: boolean;
+  /** Rok z noty copyright w stopce, np. 2015. */
+  copyrightYear: number | null;
+  responseTimeMs: number | null;
+  /** Wolna domena .pl potwierdzona przez DNS/WHOIS. */
+  whoisFreeDomain: string | null;
+}
+
+export type SieveStage = 1 | 2 | 3 | 4 | 5;
+
+export interface SniperQualification {
+  hot_score: number;
+  sieve_passed: boolean;
+  sieve_stage_reached: SieveStage;
+  rejection_reason?: string | null;
+  intent_category: IntentCategory;
+  score_reasons: string[];
+  owner_first_name?: string | null;
+  owner_vocative?: string | null;
+  local_competitor?: string | null;
+  is_promoted_ad?: boolean;
+  google_rating?: number | null;
+  google_reviews_count?: number | null;
+  tech_audit?: TechAuditResult | null;
+}
+
+/** Surowy rekord z Map Google / OLX / CEIDG po audycie w Electronie — wejście sita. */
+export type SniperRawLead = {
+  id: string;
+  source: "GOOGLE_MAPS" | "OLX" | "CEIDG";
+  nazwa: string;
+  telefon: string | null;
+  miasto: string | null;
+  adres: string | null;
+  kategoria: string | null;
+  website: string | null;
+  email: string | null;
+  /** Imię lub pełne „Imię Nazwisko” osoby kontaktowej z ogłoszenia/rejestru. */
+  owner_name: string | null;
+  rating: number | null;
+  reviews: number | null;
+  is_promoted_ad: boolean;
+  /** Ogłoszenie OLX z linkami tylko do social mediów. */
+  social_only: boolean;
+  /** Data rozpoczęcia działalności z CEIDG (YYYY-MM-DD). */
+  ceidg_start_date: string | null;
+  nip: string | null;
+  mapy_url: string | null;
+  olx_url: string | null;
+  tech_audit: TechAuditResult | null;
+  whois_free_domain: string | null;
+};
+
+export type SniperScanParams = {
+  nicheId: string;
+  keyword: string;
+  pkd: string;
+  city: string;
+  voivodeship: string;
+  sources: { maps: boolean; olx: boolean; ceidg: boolean };
+};
+
+export type SniperScanProgress = {
+  phase: "collect" | "audit" | "domains" | "done";
+  label: string;
+  index: number;
+  total: number;
+};
+
+export type SniperDeepScanResult = {
+  ok: boolean;
+  raw?: SniperRawLead[];
+  notes?: string[];
+  error?: string;
 };
 
 export type NewLead = Record<string, unknown>;
@@ -215,6 +312,12 @@ type DesktopBridge = {
   };
   enrich?: (url: string) => Promise<{ ok: boolean; html?: string }>;
   bulkSend?: unknown;
+  sniper?: {
+    runDeepScan: (
+      params: SniperScanParams,
+      onProgress?: (p: SniperScanProgress) => void,
+    ) => Promise<SniperDeepScanResult>;
+  };
 };
 
 export function desktop(): DesktopBridge | null {

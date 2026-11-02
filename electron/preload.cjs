@@ -112,6 +112,15 @@ contextBridge.exposeInMainWorld("leadfinder", {
     },
   },
 
+  // Snajper Top 50: Mapy/OLX/CEIDG + audyt HTTP/TLS/DOM + wolne domeny .pl.
+  sniper: {
+    runDeepScan: (params, onProgress) => {
+      const listener = (_e, data) => { if (onProgress) onProgress(data); };
+      ipcRenderer.on("sniper-progress", listener);
+      return ipcRenderer.invoke("sniper:runDeepScan", params).finally(() => ipcRenderer.removeListener("sniper-progress", listener));
+    },
+  },
+
   blacklist: {
     add: (phone) => ipcRenderer.invoke("blacklist:add", phone),
     getAll: () => ipcRenderer.invoke("blacklist:getAll"),

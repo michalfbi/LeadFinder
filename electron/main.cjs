@@ -6,6 +6,7 @@ const { secondaryDisplay, animateWindowToSecondaryDisplay } = require("./window-
 const { createAutopilot } = require("./autopilot.cjs");
 const { createEmailEngine } = require("./email.cjs");
 const { collectOffers, offerDetail } = require("./olx-results.cjs");
+const { createSniperScanner } = require("./sniper-audit.cjs");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -1076,6 +1077,15 @@ async function searchOlx(e, payload) {
       zrodlo: "OLX",
       zrodlo_telefonu: phoneSource,
       socialOnly: links.socialOnly,
+      // Snajper: wyróżnienie/promowanie ogłoszenia i imię osoby kontaktowej.
+      isPromoted: Boolean(
+        fullOffer?.promotion?.highlighted ||
+          fullOffer?.promotion?.top_ad ||
+          fullOffer?.promotion?.premium_ad_page ||
+          o?.promotion?.highlighted ||
+          o?.promotion?.top_ad,
+      ),
+      contactName: String(fullOffer?.contact?.name ?? fullOffer?.user?.name ?? o?.user?.name ?? "").trim() || null,
     });
     await sleep(600 + Math.random() * 900);
   }
@@ -1171,6 +1181,29 @@ async function suggestAndCheckDomain(companyName, city) {
   }
   return { ok: true, domain: null, available: false, suggestions: checked };
 }
+
+// ---------- Snajper Top 50: głęboki skan dla 5-stopniowego sita ----------
+const sniperScanner = createSniperScanner({
+  scrapeGoogleMaps,
+  searchOlx,
+  searchCeidg,
+  hasCeidgKey: () => Boolean(String(readSettings().ceidgApiKey ?? "").trim()),
+  validatePolishMobile,
+  suggestDomains,
+  checkDomainAvailability,
+  fetchImpl: (url, init) => fetch(url, init),
+  userAgent: HARVEST_UA,
+});
+let sniperRunning = false;
+ipcMain.handle("sniper:runDeepScan", async (event, params) => {
+  if (sniperRunning) return { ok: false, error: "Skan Snajpera już trwa — poczekaj na wynik." };
+  sniperRunning = true;
+  try {
+    return await sniperScanner.runDeepScan(event, params);
+  } finally {
+    sniperRunning = false;
+  }
+});
 
 ipcMain.handle("domain:checkAvailability", async (_e, payload) => {
   const nazwa = String(payload?.nazwa ?? "").trim();
