@@ -1,0 +1,5 @@
+{
+  "turbo": { "minDelayMs": 1500, "maxDelayMs": 3000 },
+  "fast": { "minDelayMs": 5000, "maxDelayMs": 10000 },
+  "balance": { "minDelayMs": 12000, "maxDelayMs": 20000 }
+}

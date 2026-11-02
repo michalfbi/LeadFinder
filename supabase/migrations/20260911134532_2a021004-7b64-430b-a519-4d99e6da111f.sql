@@ -1,0 +1,1 @@
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS nisza text, ADD COLUMN IF NOT EXISTS wojewodztwo text;

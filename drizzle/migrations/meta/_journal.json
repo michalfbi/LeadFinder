@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793369276760,
+      "tag": "0000_leads_sms_attribution_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793384315919,
+      "tag": "0001_add_website_issue_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793395695117,
+      "tag": "0002_leads_add_strona_problem_zrodlo_telefonu",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793404362262,
+      "tag": "0003_leads_domain_email_verified",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,299 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system definition.
+ *
+ * The @theme inline block maps CSS custom properties to Tailwind utility
+ * classes (e.g. --color-primary -> bg-primary, text-primary).
+ *
+ * The :root and .dark blocks define the actual color values using oklch.
+ * All colors MUST use oklch format.
+ *
+ * To add a new semantic color:
+ * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-macos-canvas: var(--background);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-warning: var(--warning);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root,
+.dark {
+  --radius: 0.5rem;
+  --glass-surface: oklch(1 0 0 / 4%);
+  --glass-hover: oklch(1 0 0 / 6%);
+  --glass-highlight: oklch(1 0 0 / 12%);
+  --glass-panel: oklch(0 0 0 / 40%);
+  --glass-shadow: 0 8px 32px oklch(0 0 0 / 36%), inset 0 1px 0 var(--glass-highlight);
+  --panel-shadow: inset 0 1px 0 oklch(1 0 0 / 10%);
+  --segment-active: oklch(1 0 0 / 14%);
+  --control-shadow: 0 2px 5px oklch(0 0 0 / 16%);
+  --traffic-close: oklch(0.7 0.19 25);
+  --traffic-minimize: oklch(0.82 0.16 80);
+  --traffic-expand: oklch(0.75 0.2 145);
+  --canvas-light: radial-gradient(ellipse at 10% 10%, color-mix(in oklab, var(--primary) 7%, transparent), transparent 55%), radial-gradient(ellipse at 95% 90%, color-mix(in oklab, var(--chart-4) 6%, transparent), transparent 55%);
+  --background: oklch(0.145 0.008 270);
+  --foreground: oklch(0.97 0.005 260);
+  --card: oklch(1 0 0 / 4%);
+  --card-foreground: oklch(0.97 0.005 260);
+  --popover: oklch(0.24 0.02 265 / 88%);
+  --popover-foreground: oklch(0.97 0.005 260);
+  --primary: oklch(0.68 0.17 256);
+  --primary-foreground: oklch(0.99 0.002 260);
+  --secondary: oklch(0.85 0.01 260 / 12%);
+  --secondary-foreground: oklch(0.97 0.005 260);
+  --muted: oklch(0.85 0.01 260 / 10%);
+  --muted-foreground: oklch(0.75 0.015 260);
+  --accent: oklch(0.85 0.01 260 / 16%);
+  --accent-foreground: oklch(0.97 0.005 260);
+  --destructive: oklch(0.64 0.2 22);
+  --warning: oklch(0.78 0.16 70);
+  --destructive-foreground: oklch(0.99 0.002 260);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 9%);
+  --ring: oklch(0.68 0.17 256);
+  --chart-1: oklch(0.68 0.17 256);
+  --chart-2: oklch(0.75 0.15 165);
+  --chart-3: oklch(0.78 0.16 90);
+  --chart-4: oklch(0.68 0.18 300);
+  --chart-5: oklch(0.7 0.18 30);
+  --sidebar: oklch(0.24 0.02 265 / 60%);
+  --sidebar-foreground: oklch(0.97 0.005 260);
+  --sidebar-primary: oklch(0.68 0.17 256);
+  --sidebar-primary-foreground: oklch(0.99 0.002 260);
+  --sidebar-accent: oklch(0.85 0.01 260 / 14%);
+  --sidebar-accent-foreground: oklch(0.97 0.005 260);
+  --sidebar-border: oklch(1 0 0 / 14%);
+  --sidebar-ring: oklch(0.68 0.17 256);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family:
+      -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI",
+      system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Liquid glass, macOS-style */
+@utility glass {
+  background: var(--glass-surface);
+  backdrop-filter: blur(32px) saturate(150%);
+  border: 1px solid var(--border);
+  box-shadow: var(--glass-shadow);
+}
+
+@utility glass-soft {
+  background: var(--glass-surface);
+  backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid var(--border);
+}
+
+@utility glass-sheen {
+  position: relative;
+}
+
+/* iOS / mobile ergonomics */
+@utility safe-px {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+@utility safe-py {
+  padding-top: max(1.5rem, env(safe-area-inset-top));
+  padding-bottom: max(2rem, env(safe-area-inset-bottom));
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* Stop iOS Safari from zooming when focusing a field */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select,
+  button {
+    font-size: 16px;
+  }
+}
+
+/* Wygodne cele dotyku na telefonie */
+@media (max-width: 767px) {
+  button:not([role="checkbox"]):not([role="switch"]),
+  a[href^="tel:"],
+  a[href^="sms:"] {
+    min-height: 44px;
+  }
+}
+
+@utility bg-macos-canvas {
+  background-color: var(--background);
+  background-image: var(--canvas-light);
+  background-attachment: fixed;
+}
+@utility apple-glass-card {
+  background: var(--glass-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(32px) saturate(150%);
+  box-shadow: var(--glass-shadow);
+  transition: background 300ms, transform 300ms;
+  &:hover { background: var(--glass-hover); }
+}
+@utility apple-glass-panel {
+  background: var(--glass-panel);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  backdrop-filter: blur(48px) saturate(150%);
+  box-shadow: var(--panel-shadow);
+}
+@utility apple-segment {
+  background: var(--glass-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+}
+@utility apple-segment-active {
+  background: var(--segment-active);
+  color: var(--foreground);
+  box-shadow: var(--control-shadow);
+  border-radius: 8px;
+}
+@utility secondary-lead-action {
+  opacity: 1;
+  transition: opacity 200ms;
+}
+@utility workspace-section {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+@utility bulk-action-bar {
+  background: color-mix(in oklab, var(--primary) 15%, var(--background));
+  border: 1px solid color-mix(in oklab, var(--primary) 40%, transparent);
+  backdrop-filter: blur(32px);
+  box-shadow: var(--glass-shadow);
+}
+.app-shell { display: grid; grid-template-columns: 256px minmax(0, 1fr); gap: 32px; min-height: 100vh; padding: 16px; }
+.app-sidebar { position: sticky; top: 16px; height: calc(100vh - 32px); min-height: 640px; padding: 20px 12px; display: flex; flex-direction: column; justify-content: space-between; }
+.app-workspace { padding: 20px 20px 48px 0; max-width: 1440px; width: 100%; }
+.workspace-section { background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+.workspace-header { padding-bottom: 26px; margin-bottom: 26px; border-bottom: 1px solid var(--border); }
+.sidebar-item { height: 44px; width: 100%; justify-content: flex-start; gap: 12px; padding: 0 12px; border-radius: 8px; color: var(--muted-foreground); }
+.sidebar-item-active { background: var(--segment-active); color: var(--foreground); box-shadow: var(--control-shadow); }
+.sidebar-item-active svg { color: var(--primary); }
+.sidebar-status { margin-inline: 8px; }
+.traffic-lights { display: flex; gap: 8px; padding: 0 10px; height: 14px; }
+.traffic-lights span { width: 12px; height: 12px; border-radius: 50%; background: var(--traffic-close); }
+.traffic-lights span:nth-child(2) { background: var(--traffic-minimize); }
+.traffic-lights span:nth-child(3) { background: var(--traffic-expand); }
+.brand-mark { color: var(--primary); display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; background: color-mix(in oklab, var(--primary) 12%, transparent); border-radius: 10px; }
+.workspace-views [role="tabpanel"][data-state="active"] { animation: workspace-in 300ms ease-out both; }
+.workspace-views [role="tablist"] { max-width: 100%; height: auto; flex-wrap: wrap; background: var(--glass-surface); border: 1px solid var(--border); border-radius: 12px; padding: 4px; }
+.workspace-views [role="tab"] { white-space: normal; min-height: 34px; border-radius: 8px; }
+.workspace-views [role="tab"][data-state="active"] { background: var(--segment-active); color: var(--foreground); box-shadow: var(--control-shadow); }
+.workspace-views [role="tab"][data-state="active"]::after { display: none; }
+.workspace-views input, .workspace-views textarea { background: var(--glass-surface); }
+h1, h2, h3, h4 { letter-spacing: 0; }
+.app-shell { font-variant-numeric: tabular-nums; }
+.app-shell a[href^="sms:"], .app-shell a[href^="tel:"] { font-family: ui-monospace, SFMono-Regular, monospace; color: var(--foreground); }
+.widget-shell { background: transparent; }
+.widget-shell.bg-macos-canvas { background-color: var(--background); background-image: var(--canvas-light); }
+.kpi-tile { --kpi-tone: var(--primary); }
+.kpi-success { --kpi-tone: var(--chart-2); }
+.kpi-warning { --kpi-tone: var(--warning); }
+.kpi-revenue { --kpi-tone: var(--chart-4); }
+.kpi-icon { color: var(--kpi-tone); }
+.kpi-rule { width: 100%; height: 2px; background: color-mix(in oklab, var(--kpi-tone) 25%, transparent); border-radius: 2px; }
+.widget-drag { -webkit-app-region: drag; }
+.widget-no-drag { -webkit-app-region: no-drag; }
+@keyframes workspace-in { from { opacity: 0; transform: translateY(6px) scale(0.99); } to { opacity: 1; transform: none; } }
+@media (hover: hover) and (pointer: fine) {
+  .group .secondary-lead-action { opacity: 0; }
+  .group:hover .secondary-lead-action, .group:focus-within .secondary-lead-action { opacity: 1; }
+}
+@media (max-width: 1100px) {
+  .app-shell { gap: 20px; grid-template-columns: 230px minmax(0, 1fr); }
+  .app-workspace { padding-right: 0; }
+}
+@media (max-width: 767px) {
+  .app-shell { display: block; padding: 12px; }
+  .app-sidebar { position: relative; top: 0; height: auto; min-height: 0; padding: 16px; }
+  .app-sidebar nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sidebar-item { font-size: 13px; gap: 8px; padding: 0 8px; }
+  .app-sidebar .traffic-lights, .sidebar-status { display: none; }
+  .app-sidebar .apple-segment { margin-bottom: 16px; }
+  .app-workspace { padding: 28px 0; }
+  .workspace-header { margin-bottom: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

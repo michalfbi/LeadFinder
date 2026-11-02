@@ -1,0 +1,1 @@
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS suggested_free_domain text; ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS email_verified boolean DEFAULT false;

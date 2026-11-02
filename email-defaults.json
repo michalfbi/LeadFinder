@@ -1,0 +1,9 @@
+{
+  "subject": "{Pytanie o wycenę|Strona internetowa dla firmy {nazwa}|Brak strony www - {nazwa} ({miasto})}",
+  "bodies": {
+    "NO_WEBSITE": "{Dzień dobry|Witam}, trafiłem na firmę {nazwa} w {miasto}. Nie znalazłem Państwa strony WWW{, a adres w darmowej skrzynce nie pokazuje własnej marki| ani firmowej poczty we własnej domenie}. {Tworzę strony z portfolio i firmowym e-mailem|Pomagam lokalnym firmom przygotować stronę i pocztę we własnej domenie}. Czy mogę przesłać niezobowiązującą propozycję?",
+    "EXPIRED_OR_ERROR": "{Dzień dobry|Witam}, próbowałem odwiedzić stronę firmy {nazwa}, ale wygląda na niedostępną. {Mogę pomóc przywrócić działającą stronę|Pomagam odświeżyć strony i zmienić hosting}. Czy mogę przesłać propozycję rozwiązania?",
+    "NO_SSL": "{Dzień dobry|Witam}, przy sprawdzaniu strony firmy {nazwa} zauważyłem problem z zabezpieczeniem SSL. {Mogę pomóc uruchomić bezpieczną wersję|Pomagam lokalnym firmom zabezpieczyć i odświeżyć strony}. Czy mogę przesłać szczegóły?",
+    "CEIDG_START": "{Dzień dobry|Witam}, trafiłem na nowo zarejestrowaną firmę {nazwa} w {miasto}. Przygotowuję pakiet na start: {strona WWW, domena i firmowy e-mail|strona z ofertą oraz poczta we własnej domenie}. Czy mogę przesłać niezobowiązującą propozycję?"
+  }
+}

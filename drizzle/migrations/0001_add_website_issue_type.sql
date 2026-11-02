@@ -1,0 +1,1 @@
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS website_issue_type text DEFAULT 'NO_WEBSITE';

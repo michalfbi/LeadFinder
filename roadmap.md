@@ -1,0 +1,25 @@
+# Autopilot
+- [x] Implement dynamic SMS speed, ETA, live countdown changes and Telegram speed approvals; verify tests and browser.
+- [ ] Verify accelerated SMS sending and live speed changes on a real Mac — requires macOS Messages permissions and the user's Telegram configuration.
+- [x] Telegram Remote Command Center: /menu, /skan wizard, remote bulk send, pause/resume, owner-chat authorization, command log and browser simulator.
+- [x] SMS-only focus: email channel hidden from UI (sidebar, search, settings, planner); legacy email module left dormant.
+- [x] Mega-catalog of 40 niches in 8 categories shared between search, weekly planner and Telegram pilot.
+- [x] Phone as TV remote: Telegram/simulator commands drive the Mac screen live (Dynamic Island, tab switch, full 30–50 result scan, add & send).
+- [ ] Verify live Telegram-driven screen control on Mac — requires the user's bot token and Mac permissions.
+- [ ] Verify live Telegram remote scanning and bulk send on Mac — requires the user's bot token and Mac permissions.
+- [x] Apply Apple glass design and floating sidebar with shared channel context, preserving existing views.
+- [x] Add desktop widget controls and safe secondary-display window animation; verify geometry tests and preview navigation.
+- [ ] Verify native vibrancy and cross-monitor window animation on a real Mac — requires macOS and two connected displays.
+- [x] Fix weekly time input editing and retain unsaved times across refresh; verify blur and save.
+- [x] Fix OLX pagination, nested offer details, DOM fallback and full-grid rendering; verify regressions.
+- [ ] Verify live OLX location resolution and harvesting on Mac — sandbox OLX requests return HTTP 403.
+- [x] Separate email engine: harvesting, encrypted SMTP/IMAP, suppression and safe queue.
+- [x] Email search, dedicated records, templates, campaigns, settings and analytics.
+- [x] Email missions in weekly Autopilot with staging and explicit approval.
+- [x] Email safety tests and full preview workflow verification.
+- [ ] Real email harvesting, SMTP delivery and IMAP reply checks — require the user's configured mailbox on their Mac.
+- [x] Weekly scheduler, persistent staging and explicit approval on Mac.
+- [x] Telegram buttons, authenticated self-commands and reply forwarding implemented.
+- [x] Weekly planner and isolated browser simulation.
+- [x] Safety tests and end-to-end preview verification.
+- [ ] Real Mac scan, Messages sending and Telegram delivery verification — requires the user's Mac permissions and bot configuration.

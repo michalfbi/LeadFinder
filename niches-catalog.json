@@ -1,0 +1,100 @@
+{
+  "categories": [
+    {
+      "id": "motoryzacja",
+      "label": "Motoryzacja & Custom",
+      "icon": "🏎️",
+      "niches": [
+        { "id": "wrapping-ppf", "label": "Wrapping & Folie PPF", "icon": "🏎️", "searchQuery": "oklejanie aut folią ppf", "pkd": "45.20.Z" },
+        { "id": "chiptuning", "label": "Chiptuning & Hamownia", "icon": "🏎️", "searchQuery": "chiptuning modyfikacje mocy", "pkd": "45.20.Z" },
+        { "id": "felgi-cnc", "label": "Regeneracja Felg CNC", "icon": "🏎️", "searchQuery": "regeneracja felg malowanie proszkowe", "pkd": "45.20.Z" },
+        { "id": "szyby-caraudio", "label": "Przyciemnianie Szyb & Car Audio", "icon": "🏎️", "searchQuery": "przyciemnianie szyb car audio", "pkd": "45.20.Z" },
+        { "id": "skrzynie-dpf", "label": "Serwis Skrzyń & DPF", "icon": "🏎️", "searchQuery": "naprawa skrzyń biegów dpf", "pkd": "45.20.Z" },
+        { "id": "auta-usa", "label": "Auta z USA / Import", "icon": "🏎️", "searchQuery": "sprowadzanie aut z usa", "pkd": "45.11.Z" },
+        { "id": "wynajem-aut", "label": "Wynajem Aut Sportowych/Busów", "icon": "🏎️", "searchQuery": "wypożyczalnia aut sportowych busów", "pkd": "77.11.Z" }
+      ]
+    },
+    {
+      "id": "slub-eventy",
+      "label": "Ślub, Eventy & Wideo",
+      "icon": "📸",
+      "niches": [
+        { "id": "foto-slub", "label": "Fotograf & Kamerzysta Ślubny", "icon": "📸", "searchQuery": "fotograf ślubny kamerzysta dron", "pkd": "74.20.Z" },
+        { "id": "fotobudka-360", "label": "Fotobudka 360 & Ciężki Dym", "icon": "📸", "searchQuery": "fotobudka 360 ciężki dym napis love", "pkd": "93.29.Z" },
+        { "id": "dj-wesele", "label": "DJ & Wodzirej na Wesele", "icon": "📸", "searchQuery": "dj na wesele wodzirej", "pkd": "93.29.Z" },
+        { "id": "drink-bar", "label": "Drink Bar & Prosecco Van", "icon": "📸", "searchQuery": "barman na wesele mobilny drink bar", "pkd": "56.21.Z" },
+        { "id": "dekoracje-slubne", "label": "Dekoracje Sal & Balony", "icon": "📸", "searchQuery": "dekoracje ślubne ścianki balonowe", "pkd": "74.10.Z" },
+        { "id": "namioty", "label": "Namioty Imprezowe Wynajem", "icon": "📸", "searchQuery": "wynajem namiotów imprezowych", "pkd": "77.39.Z" }
+      ]
+    },
+    {
+      "id": "fitness-zdrowie",
+      "label": "Fitness, Sport & Zdrowie",
+      "icon": "🏋️",
+      "niches": [
+        { "id": "trener-ems", "label": "Trener Personalny & EMS", "icon": "🏋️", "searchQuery": "trener personalny studio ems", "pkd": "85.51.Z" },
+        { "id": "pilates", "label": "Studio Pilates & Joga", "icon": "🏋️", "searchQuery": "studio pilates reformer joga", "pkd": "93.13.Z" },
+        { "id": "mma-boks", "label": "Szkoła MMA, Boks & BJJ", "icon": "🏋️", "searchQuery": "klub bokserski mma sporty walki", "pkd": "93.12.Z" },
+        { "id": "fizjoterapia", "label": "Fizjoterapia & Osteopatia", "icon": "🏋️", "searchQuery": "fizjoterapeuta osteopata rehabilitacja", "pkd": "86.90.A" },
+        { "id": "podologia", "label": "Podologia & Trychologia", "icon": "🏋️", "searchQuery": "podolog gabinet podologiczny", "pkd": "86.90.D" },
+        { "id": "stomatologia", "label": "Stomatologia & Ortodoncja", "icon": "🏋️", "searchQuery": "stomatolog gabinet dentystyczny", "pkd": "86.23.Z" }
+      ]
+    },
+    {
+      "id": "tatuaz-beauty",
+      "label": "Tatuaż, Barber & Beauty",
+      "icon": "🎨",
+      "niches": [
+        { "id": "tatuaz", "label": "Studio Tatuażu & Piercing", "icon": "🎨", "searchQuery": "studio tatuażu tattoo piercing", "pkd": "96.09.Z" },
+        { "id": "barber", "label": "Barber Shop", "icon": "🎨", "searchQuery": "barber shop fryzjer męski", "pkd": "96.02.Z" },
+        { "id": "med-estetyczna", "label": "Medycyna Estetyczna", "icon": "🎨", "searchQuery": "medycyna estetyczna kosmetolog", "pkd": "96.02.Z" },
+        { "id": "makijaz-rzesy", "label": "Makijaż Permanentny & Rzęsy", "icon": "🎨", "searchQuery": "makijaż permanentny stylizacja rzęs", "pkd": "96.02.Z" }
+      ]
+    },
+    {
+      "id": "wnetrza-meble",
+      "label": "Wnętrza, Meble & Loft",
+      "icon": "🏡",
+      "niches": [
+        { "id": "meble-kuchnie", "label": "Meble Kuchenne na Wymiar", "icon": "🏡", "searchQuery": "meble na wymiar kuchnie stolarz", "pkd": "31.02.Z, 31.09.Z" },
+        { "id": "mikrocement", "label": "Mikrocement & Żywice", "icon": "🏡", "searchQuery": "mikrocement posadzki żywiczne", "pkd": "43.33.Z" },
+        { "id": "meble-loft", "label": "Meble Loftowe & Schody", "icon": "🏡", "searchQuery": "meble loftowe schody drewniane balustrady", "pkd": "16.23.Z" },
+        { "id": "architekt-wnetrz", "label": "Architekt Wnętrz & 3D", "icon": "🏡", "searchQuery": "projektowanie wnętrz architekt wnętrz", "pkd": "71.11.Z" },
+        { "id": "odbiory-mieszkan", "label": "Odbiory Mieszkań & Termowizja", "icon": "🏡", "searchQuery": "odbiory mieszkań od dewelopera", "pkd": "71.12.Z" }
+      ]
+    },
+    {
+      "id": "instalacje-budowa",
+      "label": "Instalacje, Ogrody & Budowa",
+      "icon": "🛠️",
+      "niches": [
+        { "id": "klima-pompy", "label": "Klimatyzacja & Pompy Ciepła", "icon": "🛠️", "searchQuery": "montaż klimatyzacji pompy ciepła", "pkd": "43.22.Z" },
+        { "id": "smart-home", "label": "Smart Home & Monitoring", "icon": "🛠️", "searchQuery": "inteligentny dom monitoring alarmy", "pkd": "43.21.Z" },
+        { "id": "brukarstwo", "label": "Brukarstwo & Ogrody", "icon": "🛠️", "searchQuery": "układanie kostki brukowej ogrody", "pkd": "43.99.Z" },
+        { "id": "dekarstwo", "label": "Dekarstwo & Dachy", "icon": "🛠️", "searchQuery": "dekarz krycie dachów", "pkd": "43.91.Z" },
+        { "id": "minikoparka", "label": "Minikoparka & Studnie", "icon": "🛠️", "searchQuery": "usługi minikoparką studnie głębinowe", "pkd": "43.99.Z" },
+        { "id": "mycie-cisnieniowe", "label": "Mycie Ciśnieniowe Kostki/Dachów", "icon": "🛠️", "searchQuery": "mycie kostki brukowej czyszczenie elewacji", "pkd": "81.22.Z" }
+      ]
+    },
+    {
+      "id": "zwierzeta",
+      "label": "Zwierzęta (Pet-Parents)",
+      "icon": "🐾",
+      "niches": [
+        { "id": "behawiorysta", "label": "Behawiorysta & Trener Psów", "icon": "🐾", "searchQuery": "behawiorysta psów szkolenie psów", "pkd": "96.09.Z" },
+        { "id": "groomer", "label": "Groomer & Hotel dla Psów", "icon": "🐾", "searchQuery": "groomer strzyżenie psów hotel dla zwierząt", "pkd": "96.09.Z" }
+      ]
+    },
+    {
+      "id": "glamping-b2b",
+      "label": "Glamping, Turystyka & B2B",
+      "icon": "🛶",
+      "niches": [
+        { "id": "glamping", "label": "Glamping & Domki z Balią", "icon": "🛶", "searchQuery": "glamping domek na wynajem balia", "pkd": "55.20.Z" },
+        { "id": "sauna-mobilna", "label": "Mobilna Sauna & Balia Wynajem", "icon": "🛶", "searchQuery": "mobilna sauna wynajem balii", "pkd": "93.29.Z" },
+        { "id": "quady-kajaki", "label": "Quady, Kajaki & Kampery", "icon": "🛶", "searchQuery": "wypożyczalnia quadów kajaki kampery", "pkd": "77.21.Z" },
+        { "id": "kancelarie-b2b", "label": "Kancelarie, Księgowość & Nieruchomości", "icon": "🛶", "searchQuery": "kancelaria adwokacka biuro rachunkowe", "pkd": "69.10.Z, 69.20.Z" }
+      ]
+    }
+  ]
+}
