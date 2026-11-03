@@ -3,6 +3,7 @@ import type { SniperRawLead, TechAuditResult } from "../leads-store";
 import {
   generateSimulatedRawLeads,
   isCorporateName,
+  offerMessageForRow,
   runFiveStageSieve,
   sniperLeadToRow,
   sniperMessageFor,
@@ -405,5 +406,129 @@ describe("szablony Snajpera", () => {
     expect(row["website_issue_type"]).toBe("NO_SSL");
     expect(row["status"]).toBe("nowy");
     expect(row["hot_score"]).toBe(res.top[0]!.hot_score);
+  });
+});
+
+describe("oferta: reklamy wideo AI", () => {
+  const video = { now: NOW, offer: "video_ads" as const, minScoreThreshold: 0 };
+
+  it("nie odrzuca nowoczesnej strony, a piksel reklamowy daje +30", () => {
+    const res = runFiveStageSieve(
+      [
+        raw({
+          website: "https://nowak.pl",
+          tech_audit: audit({ hasAdPixels: true }),
+        }),
+      ],
+      video,
+    );
+    const lead = res.top[0]!;
+    expect(lead.offer).toBe("video_ads");
+    expect(lead.intent_category).toBe("VIDEO_ACTIVE_ADVERTISER");
+    expect(lead.score_reasons).toContain(
+      "🎯 Piksel reklamowy Meta/Google Ads — firma inwestuje w reklamy (+30)",
+    );
+    expect(lead.score_reasons).toContain(
+      "✅ Sprawna strona — reklama ma dokąd kierować (+10)",
+    );
+    expect(lead.suggested_free_domain).toBeNull();
+  });
+
+  it("niedziałająca strona trafia do oferty WWW, a brak budżetu odpada", () => {
+    const broken = runFiveStageSieve(
+      [
+        raw({
+          website: "https://nowak.pl",
+          tech_audit: audit({ httpStatus: 500 }),
+        }),
+      ],
+      video,
+    );
+    expect(broken.rejected[0]!.rejection_reason).toMatch(
+      /lepszy kandydat na ofertę „Strony WWW”/,
+    );
+    const noBudget = runFiveStageSieve(
+      [raw({ reviews: 6, rating: 4.9 })],
+      video,
+    );
+    expect(noBudget.rejected[0]!.rejection_reason).toMatch(
+      /^Brak sygnałów budżetu/,
+    );
+  });
+
+  it("dopuszcza większe firmy niż oferta WWW (do 400 opinii)", () => {
+    const lead = raw({ reviews: 250, rating: 4.7 });
+    expect(
+      runFiveStageSieve([lead], { now: NOW, minScoreThreshold: 0 }).top,
+    ).toHaveLength(0);
+    expect(runFiveStageSieve([lead], video).top[0]!.intent_category).toBe(
+      "VIDEO_REVIEW_LEADER",
+    );
+  });
+
+  it("branża wizualna i high-ticket dokładają punkty, gdy bramka jest włączona", () => {
+    const base = raw({ reviews: 40, rating: 4.8 });
+    const on = runFiveStageSieve([base], {
+      ...video,
+      visualNiche: true,
+      highTicket: true,
+    });
+    const off = runFiveStageSieve([base], {
+      ...video,
+      visualNiche: true,
+      highTicket: true,
+      gates: { visualNiche: false },
+    });
+    expect(on.top[0]!.hot_score - off.top[0]!.hot_score).toBe(30);
+  });
+
+  it("zapisuje typ oferty i buduje SMS o reklamie wideo z ceną", () => {
+    const res = runFiveStageSieve(
+      [
+        raw({
+          source: "OLX",
+          owner_name: "Tomasz",
+          is_promoted_ad: true,
+          reviews: 0,
+          rating: null,
+        }),
+      ],
+      { ...video, nicheLabel: "Wrapping & Folie PPF" },
+    );
+    const lead = res.top[0]!;
+    const row = sniperLeadToRow(lead, "świętokrzyskie", NOW.toISOString());
+    expect(row["offer_type"]).toBe("video_ads");
+    expect(row["website_issue_type"]).toBeNull();
+    const msg = sniperMessageFor(lead, { price: "3 wersje reklamy za 990 zł" });
+    expect(msg.body).toMatch(
+      /^(Dzień dobry|Witam), Panie Tomaszu, trafiłem na Pana wyróżnione ogłoszenie na OLX \(wrapping i folie ppf, Kielce\)/,
+    );
+    expect(msg.body).toContain("(3 wersje reklamy za 990 zł)");
+    expect(msg.body).toContain("Pana pracę");
+    expect(msg.body).not.toMatch(/[{}|]/);
+    expect(msg.body).not.toContain("domena");
+    expect(msg.templateId).toBe("🎬 Wideo · Promowane OLX");
+  });
+
+  it("pusta cena usuwa nawias, a wiersz z bazy dostaje ten sam szablon", () => {
+    const res = runFiveStageSieve([raw({ reviews: 40, rating: 4.8 })], video);
+    const lead = res.top[0]!;
+    expect(sniperMessageFor(lead, { price: "" }).body).not.toContain("()");
+    const row = {
+      ...(sniperLeadToRow(lead, null, NOW.toISOString()) as Record<
+        string,
+        unknown
+      >),
+      id: lead.id,
+      created_at: NOW.toISOString(),
+    };
+    const fromRow = offerMessageForRow(row as never);
+    expect(fromRow.body).toBe(sniperMessageFor(lead).body);
+    const legacy = offerMessageForRow({
+      ...(row as object),
+      offer_type: "video_ads",
+      intent_category: null,
+    } as never);
+    expect(legacy.templateId).toBe("🎬 Wideo · Branża wizualna");
   });
 });

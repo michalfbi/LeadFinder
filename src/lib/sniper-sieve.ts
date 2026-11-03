@@ -3,6 +3,7 @@ import type {
   IntentCategory,
   LeadRow,
   NewLead,
+  OfferId,
   SieveStage,
   SniperDeepScanResult,
   SniperQualification,
@@ -35,6 +36,14 @@ export const SNIPER_DEFAULT_MIN_SCORE = rules.defaults.minScore;
 export const SNIPER_TOP_LIMIT = rules.defaults.topLimit;
 export const SNIPER_DAILY_SMS_LIMIT = rules.defaults.dailySmsLimit;
 export const SNIPER_PILLS = rules.pills;
+export const VIDEO_RULES = rules.video;
+
+/** Szybkie pigułki nisz dopasowane do oferty. */
+export function pillsFor(
+  offer: OfferId,
+): Array<{ nicheId: string; label: string }> {
+  return offer === "video_ads" ? rules.video.pills : rules.pills;
+}
 
 export type SniperGates = {
   /** Łowca awarii: martwe strony, brak SSL, przestarzałe strony. */
@@ -45,6 +54,10 @@ export type SniperGates = {
   localLeaders: boolean;
   /** Świeże firmy z CEIDG w branżach high-ticket. */
   newCeidg: boolean;
+  /** Wideo: firmy z pikselem reklamowym Meta/Google Ads na stronie. */
+  adPixels: boolean;
+  /** Wideo: punkty za branżę wizualną i wysoką wartość klienta. */
+  visualNiche: boolean;
 };
 
 export const DEFAULT_GATES: SniperGates = {
@@ -52,6 +65,8 @@ export const DEFAULT_GATES: SniperGates = {
   paidAds: true,
   localLeaders: true,
   newCeidg: true,
+  adPixels: true,
+  visualNiche: true,
 };
 
 export type SieveOptions = {
@@ -64,6 +79,10 @@ export type SieveOptions = {
   existingPhones?: Iterable<string>;
   /** Czy skanowana nisza jest wysokomarżowa (high-ticket). */
   highTicket?: boolean;
+  /** Oferta, pod którą kwalifikujemy leady (domyślnie strony www). */
+  offer?: OfferId;
+  /** Wideo: czy nisza dobrze sprzedaje się w formie wideo. */
+  visualNiche?: boolean;
   /** Etykieta niszy wstawiana do szablonów ({branza}). */
   nicheLabel?: string | null;
   /** Data odniesienia dla „świeżych” firm z CEIDG — przekazywana jawnie dla determinizmu. */
@@ -78,6 +97,7 @@ export type SniperLead = SniperRawLead &
     /** Krótki opis wykrytego problemu technicznego do zmiennej {diagnoza_tech}. */
     tech_diagnosis: string | null;
     nisza: string | null;
+    offer: OfferId;
   };
 
 export type SieveFunnel = {
@@ -227,6 +247,7 @@ type Draft = {
   promoted: boolean;
   leader: boolean;
   newCeidg: boolean;
+  adPixels: boolean;
   diagnosis: string | null;
   competitor: string | null;
 };
@@ -236,6 +257,7 @@ function stageOne(
   blocked: Set<string>,
   existing: Set<string>,
   seen: Set<string>,
+  maxReviews: number,
 ): void {
   if (!String(d.raw.telefon ?? "").replace(/\D/g, "")) {
     d.rejection = "Brak numeru telefonu";
@@ -256,10 +278,7 @@ function stageOne(
     return;
   }
   seen.add(key);
-  if (
-    isCorporateName(d.raw.nazwa) ||
-    (d.raw.reviews ?? 0) > rules.thresholds.maxReviews
-  ) {
+  if (isCorporateName(d.raw.nazwa) || (d.raw.reviews ?? 0) > maxReviews) {
     d.rejection = "Zbyt duża firma (ryzyko sekretariatu/call center)";
     return;
   }
@@ -468,6 +487,174 @@ function intentOf(d: Draft): IntentCategory {
   return "NO_WEBSITE";
 }
 
+/* ------------------------------------------------------------------ */
+/* Bramki dla oferty „Reklamy wideo AI”                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Wideo: sprawna strona to zaleta (reklama ma dokąd kierować), a piksel
+ * reklamowy to najmocniejszy sygnał budżetu. Niedziałająca strona odpada —
+ * reklama prowadziłaby do błędu, to lepszy kandydat na ofertę „Strony WWW”.
+ */
+function stageTwoVideo(d: Draft, gates: SniperGates): void {
+  d.stage = 2;
+  const url = d.raw.website;
+  if (d.raw.social_only || isSocialUrl(url) || isFreeBuilderUrl(url)) {
+    d.site = isFreeBuilderUrl(url) ? "builder" : "social";
+    d.diagnosis =
+      d.site === "builder"
+        ? `na darmową podstronę w kreatorze (${hostOf(url)})`
+        : "tylko na profil w mediach społecznościowych";
+    if (d.site === "social") {
+      d.score += pushReason(
+        d.reasons,
+        "📱 Kontakt z klientami przez Facebooka/Instagram — tam trafi wideo",
+        VIDEO_RULES.points.socialActive,
+      );
+    }
+    return;
+  }
+  if (!url) {
+    d.site = "none";
+    return;
+  }
+  d.site = "own";
+  const audit = d.raw.tech_audit;
+  if (!audit) return;
+  d.broken = audit.httpStatus === null || audit.httpStatus >= 400;
+  if (d.broken) {
+    d.rejection = "Strona nie działa — lepszy kandydat na ofertę „Strony WWW”";
+    return;
+  }
+  if (audit.hasAdPixels) {
+    d.adPixels = true;
+    if (gates.adPixels) {
+      d.score += pushReason(
+        d.reasons,
+        "🎯 Piksel reklamowy Meta/Google Ads — firma inwestuje w reklamy",
+        VIDEO_RULES.points.adPixels,
+      );
+    }
+  }
+  if (isModernSite(audit)) {
+    d.score += pushReason(
+      d.reasons,
+      "✅ Sprawna strona — reklama ma dokąd kierować",
+      VIDEO_RULES.points.workingSite,
+    );
+  }
+}
+
+function stageThreeVideo(
+  d: Draft,
+  gates: SniperGates,
+  highTicket: boolean,
+  visualNiche: boolean,
+): void {
+  d.stage = 3;
+  const reviews = d.raw.reviews ?? 0;
+  const rating = d.raw.rating ?? 0;
+  const activeOlx = d.raw.source === "OLX";
+  if (
+    reviews < VIDEO_RULES.thresholds.minReviewsAlive &&
+    !activeOlx &&
+    !d.adPixels
+  ) {
+    d.rejection = "Brak śladów aktywności rynkowej (Zombie)";
+    return;
+  }
+  if (d.raw.is_promoted_ad) {
+    d.promoted = true;
+    if (gates.paidAds) {
+      d.score += pushReason(
+        d.reasons,
+        "💸 Płaci za promowanie ogłoszenia na OLX",
+        VIDEO_RULES.points.promotedAd,
+      );
+    }
+  }
+  if (
+    reviews >= VIDEO_RULES.thresholds.leaderMinReviews &&
+    rating >= VIDEO_RULES.thresholds.leaderMinRating
+  ) {
+    d.leader = true;
+    if (gates.localLeaders) {
+      d.score += pushReason(
+        d.reasons,
+        `⭐ ${reviews} opinii (${rating.toFixed(1)}⭐) — gotowy materiał na reklamę`,
+        VIDEO_RULES.points.reviewLeader,
+      );
+    }
+  }
+  if (!d.adPixels && !d.promoted && !d.leader) {
+    d.rejection =
+      "Brak sygnałów budżetu (piksel reklamowy, promowane ogłoszenie, mocne opinie)";
+    return;
+  }
+  if (gates.visualNiche && visualNiche) {
+    d.score += pushReason(
+      d.reasons,
+      "🎬 Branża, która dobrze sprzedaje się na wideo",
+      VIDEO_RULES.points.visualNiche,
+    );
+  }
+  if (gates.visualNiche && highTicket) {
+    d.score += pushReason(
+      d.reasons,
+      "💰 Wysoka wartość klienta (high-ticket)",
+      VIDEO_RULES.points.highTicket,
+    );
+  }
+}
+
+/** Wideo: konkurent z tego samego miasta, który ma piksel reklamowy. */
+function stageFourVideo(
+  d: Draft,
+  competitors: Map<string, SniperRawLead[]>,
+): void {
+  d.stage = 4;
+  const pool = competitors.get(normCity(d.raw.miasto)) ?? [];
+  const rival = pool.find(
+    (c) =>
+      c.id !== d.raw.id && phoneKey9(c.telefon) !== phoneKey9(d.raw.telefon),
+  );
+  d.competitor = rival ? rival.nazwa : null;
+}
+
+function intentOfVideo(d: Draft): IntentCategory {
+  if (d.adPixels) return "VIDEO_ACTIVE_ADVERTISER";
+  if (d.promoted) return "VIDEO_PAID_PROMO";
+  if (d.leader) return "VIDEO_REVIEW_LEADER";
+  if (d.site === "social") return "VIDEO_SOCIAL_ACTIVE";
+  return "VIDEO_VISUAL_NICHE";
+}
+
+function buildVideoCompetitorPool(
+  rawLeads: SniperRawLead[],
+): Map<string, SniperRawLead[]> {
+  const pool = new Map<string, SniperRawLead[]>();
+  for (const raw of rawLeads) {
+    if (!raw.tech_audit?.hasAdPixels) continue;
+    if (raw.tech_audit.httpStatus === null || raw.tech_audit.httpStatus >= 400)
+      continue;
+    if (isCorporateName(raw.nazwa)) continue;
+    const city = normCity(raw.miasto);
+    if (!city) continue;
+    const list = pool.get(city) ?? [];
+    list.push(raw);
+    pool.set(city, list);
+  }
+  for (const list of pool.values()) {
+    list.sort(
+      (a, b) =>
+        (b.reviews ?? 0) - (a.reviews ?? 0) ||
+        (b.rating ?? 0) - (a.rating ?? 0) ||
+        a.nazwa.localeCompare(b.nazwa, "pl"),
+    );
+  }
+  return pool;
+}
+
 function buildCompetitorPool(
   rawLeads: SniperRawLead[],
 ): Map<string, SniperRawLead[]> {
@@ -497,10 +684,13 @@ function finalize(
   d: Draft,
   passed: boolean,
   nicheLabel: string | null,
+  offer: OfferId,
 ): SniperLead {
-  const intent = intentOf(d);
+  const intent = offer === "video_ads" ? intentOfVideo(d) : intentOf(d);
   const domain =
-    d.raw.whois_free_domain ?? d.raw.tech_audit?.whoisFreeDomain ?? null;
+    offer === "video_ads"
+      ? null
+      : (d.raw.whois_free_domain ?? d.raw.tech_audit?.whoisFreeDomain ?? null);
   return {
     ...d.raw,
     hot_score: Math.min(100, d.score),
@@ -520,6 +710,7 @@ function finalize(
     suggested_free_domain: domain,
     tech_diagnosis: d.diagnosis,
     nisza: nicheLabel,
+    offer,
   };
 }
 
@@ -555,7 +746,14 @@ export function runFiveStageSieve(
     [...(options.existingPhones ?? [])].map(phoneKey9).filter(Boolean),
   );
   const seen = new Set<string>();
-  const competitors = buildCompetitorPool(rawLeads);
+  const offer: OfferId = options.offer ?? "website";
+  const video = offer === "video_ads";
+  const competitors = video
+    ? buildVideoCompetitorPool(rawLeads)
+    : buildCompetitorPool(rawLeads);
+  const maxReviews = video
+    ? VIDEO_RULES.thresholds.maxReviews
+    : rules.thresholds.maxReviews;
 
   const rejected: SniperLead[] = [];
   const candidates: SniperLead[] = [];
@@ -588,21 +786,35 @@ export function runFiveStageSieve(
       promoted: false,
       leader: false,
       newCeidg: false,
+      adPixels: false,
       diagnosis: null,
       competitor: null,
     };
-    const steps: Array<() => void> = [
-      () => stageOne(d, blocked, existing, seen),
-      () => stageTwo(d, gates),
-      () => stageThree(d, gates, now, options.highTicket === true),
-      () => stageFour(d, competitors),
-    ];
+    const steps: Array<() => void> = video
+      ? [
+          () => stageOne(d, blocked, existing, seen, maxReviews),
+          () => stageTwoVideo(d, gates),
+          () =>
+            stageThreeVideo(
+              d,
+              gates,
+              options.highTicket === true,
+              options.visualNiche === true,
+            ),
+          () => stageFourVideo(d, competitors),
+        ]
+      : [
+          () => stageOne(d, blocked, existing, seen, maxReviews),
+          () => stageTwo(d, gates),
+          () => stageThree(d, gates, now, options.highTicket === true),
+          () => stageFour(d, competitors),
+        ];
     let failed = false;
     for (let i = 0; i < steps.length; i++) {
       steps[i]!();
       if (d.rejection) {
         rejectedByStage[d.stage]++;
-        rejected.push(finalize(d, false, nicheLabel));
+        rejected.push(finalize(d, false, nicheLabel, offer));
         failed = true;
         break;
       }
@@ -613,7 +825,7 @@ export function runFiveStageSieve(
     }
     if (failed) continue;
     d.stage = 5;
-    candidates.push(finalize(d, true, nicheLabel));
+    candidates.push(finalize(d, true, nicheLabel, offer));
   }
 
   candidates.sort(compareLeads);
@@ -689,10 +901,14 @@ export function sniperLeadToRow(
     mapy_url: lead.mapy_url ?? lead.olx_url,
     strona: lead.website,
     imie: lead.owner_first_name ?? null,
-    zrodlo: `${SOURCE_LABEL[lead.source]} · Snajper`,
+    zrodlo: `${SOURCE_LABEL[lead.source]} · Snajper${lead.offer === "video_ads" ? " Wideo" : ""}`,
     status: "nowy",
     channel_type: "SMS",
-    website_issue_type: websiteIssueType(lead.intent_category, audit),
+    offer_type: lead.offer,
+    website_issue_type:
+      lead.offer === "video_ads"
+        ? null
+        : websiteIssueType(lead.intent_category, audit),
     strona_problem: lead.tech_diagnosis,
     suggested_free_domain: lead.suggested_free_domain,
     hot_score: lead.hot_score,
@@ -1085,9 +1301,13 @@ export function isHighTicketNiche(nicheId: string): boolean {
   return rules.highTicketNicheIds.includes(nicheId);
 }
 
+export function isVisualNiche(nicheId: string): boolean {
+  return rules.video.visualNicheIds.includes(nicheId);
+}
+
 export type SniperRunOptions = Omit<
   SieveOptions,
-  "highTicket" | "nicheLabel"
+  "highTicket" | "nicheLabel" | "visualNiche"
 > & {
   onProgress?: (p: SniperScanProgress) => void;
 };
@@ -1110,11 +1330,15 @@ export async function runSniperScan(
   const now = options.now ?? new Date();
   const niche = findNiche(params.nicheId);
   const bridge = sniperBridge();
+  const offer: OfferId = options.offer ?? params.offer ?? "website";
   let raw: SniperRawLead[];
   let notes: string[] = [];
   let simulated = false;
   if (bridge?.runDeepScan) {
-    const res = await bridge.runDeepScan(params, options.onProgress);
+    const res = await bridge.runDeepScan(
+      { ...params, offer },
+      options.onProgress,
+    );
     if (!res?.ok)
       throw new Error(res?.error ?? "Skan Snajpera nie powiódł się.");
     raw = res.raw ?? [];
@@ -1122,11 +1346,16 @@ export async function runSniperScan(
   } else {
     simulated = true;
     const total = 450;
-    for (const [phase, label] of [
+    const steps: Array<readonly [SniperScanProgress["phase"], string]> = [
       ["collect", "Pobieram firmy z Map Google, OLX i CEIDG (symulacja)"],
-      ["audit", "Audyt stron: HTTP, SSL, viewport, piksele (symulacja)"],
-      ["domains", "Sprawdzam wolne domeny .pl (symulacja)"],
-    ] as const) {
+      [
+        "audit",
+        "Audyt stron: HTTP, SSL, viewport, piksele reklamowe (symulacja)",
+      ],
+    ];
+    if (offer === "website")
+      steps.push(["domains", "Sprawdzam wolne domeny .pl (symulacja)"]);
+    for (const [phase, label] of steps) {
       options.onProgress?.({ phase, label, index: 0, total });
       await new Promise((r) => setTimeout(r, 350));
     }
@@ -1144,7 +1373,9 @@ export async function runSniperScan(
   const result = runFiveStageSieve(raw, {
     ...options,
     now,
+    offer,
     highTicket: isHighTicketNiche(params.nicheId),
+    visualNiche: isVisualNiche(params.nicheId),
     nicheLabel: niche?.label ?? params.keyword,
   });
   return { ...result, simulated, notes, scannedAt: now.toISOString() };
@@ -1154,10 +1385,35 @@ export async function runSniperScan(
 /* SMS dla leada                                                        */
 /* ------------------------------------------------------------------ */
 
+/** Pola potrzebne do zbudowania SMS-a — wspólne dla leada ze sita i wiersza z bazy. */
+export type SniperMessageSource = Pick<
+  SniperLead,
+  | "id"
+  | "nazwa"
+  | "miasto"
+  | "kategoria"
+  | "nisza"
+  | "intent_category"
+  | "owner_first_name"
+  | "owner_vocative"
+  | "suggested_free_domain"
+  | "google_rating"
+  | "google_reviews_count"
+  | "local_competitor"
+  | "tech_diagnosis"
+>;
+
+export type SniperMessageOptions = {
+  optOut?: boolean;
+  vocativeOverride?: string | null;
+  /** Tekst ceny wstawiany w nawiasie; pusty = bez ceny w SMS-ie. */
+  price?: string;
+};
+
 /** Hiper-precyzyjny SMS dla leada ze sita; ziarnem Spintax jest id leada. */
 export function sniperMessageFor(
-  lead: SniperLead,
-  options: { optOut?: boolean; vocativeOverride?: string | null } = {},
+  lead: SniperMessageSource,
+  options: SniperMessageOptions = {},
 ): { body: string; signature: string; templateId: string } {
   const vocative =
     options.vocativeOverride !== undefined
@@ -1178,6 +1434,7 @@ export function sniperMessageFor(
     intent: lead.intent_category,
     gender,
     optOut: options.optOut,
+    price: options.price,
     seed: lead.id,
     vars: {
       nazwa: lead.nazwa,
@@ -1195,4 +1452,50 @@ export function sniperMessageFor(
       diagnoza_tech: lead.tech_diagnosis,
     },
   });
+}
+
+const VIDEO_INTENTS = new Set<IntentCategory>([
+  "VIDEO_ACTIVE_ADVERTISER",
+  "VIDEO_PAID_PROMO",
+  "VIDEO_REVIEW_LEADER",
+  "VIDEO_SOCIAL_ACTIVE",
+  "VIDEO_VISUAL_NICHE",
+]);
+
+/**
+ * SMS dla leada zapisanego w bazie (wysyłka z „Mojej Bazy” albo ze „Szablonów
+ * & Wysyłki”). Lead wideo bez zapisanej intencji dostaje szablon ogólny wideo.
+ */
+export function offerMessageForRow(
+  row: LeadRow,
+  options: SniperMessageOptions = {},
+): { body: string; signature: string; templateId: string } {
+  const video = row.offer_type === "video_ads";
+  const stored = row.intent_category ?? null;
+  const intent: IntentCategory = video
+    ? stored && VIDEO_INTENTS.has(stored)
+      ? stored
+      : "VIDEO_VISUAL_NICHE"
+    : stored && !VIDEO_INTENTS.has(stored)
+      ? stored
+      : "NO_WEBSITE";
+  return sniperMessageFor(
+    {
+      id: row.id,
+      nazwa: row.nazwa,
+      miasto: row.miasto ?? null,
+      kategoria: row.kategoria ?? null,
+      nisza: row.nisza ?? null,
+      intent_category: intent,
+      owner_first_name: row.owner_first_name ?? row.imie ?? null,
+      owner_vocative: row.owner_vocative ?? null,
+      suggested_free_domain: video ? null : (row.suggested_free_domain ?? null),
+      google_rating: row.google_rating ?? row.ocena ?? null,
+      google_reviews_count:
+        row.google_reviews_count ?? row.liczba_opinii ?? null,
+      local_competitor: row.local_competitor ?? null,
+      tech_diagnosis: row.strona_problem ?? null,
+    },
+    options,
+  );
 }
