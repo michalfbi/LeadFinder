@@ -961,6 +961,8 @@ async function searchOlx(e, payload) {
   const voivodeship = String(payload?.voivodeship ?? "").trim();
   const maxResults = Math.min(Math.max(Math.floor(Number(payload?.maxResults) || 50), 5), 50);
   const checkDDG = payload?.checkDuckDuckGo === true;
+  // Snajper „Reklamy wideo”: firmy z własną stroną są pożądane, więc ich nie odrzucamy.
+  const keepOwnSite = payload?.keepOwnSite === true;
   if (!query) return { ok: false, error: "Brak frazy wyszukiwania." };
   const sendProgress = (data) => { try { e.sender.send("olx-progress", data); } catch {} };
 
@@ -1033,7 +1035,7 @@ async function searchOlx(e, payload) {
 
     // Własna strona www w opisie -> odrzucamy (ma już stronę).
     const links = olxLinksInDescription(description);
-    if (links.ownSite) { skippedSite++; continue; }
+    if (links.ownSite && !keepOwnSite) { skippedSite++; continue; }
 
     // Numer wprost z opisu — natychmiastowy lead, bez klikania.
     let phone = findMobileInText(description, "");
@@ -1060,7 +1062,7 @@ async function searchOlx(e, payload) {
     if (!key || blacklist.has(key) || seenPhones.has(key)) continue;
 
     // Opcjonalny double-check w DuckDuckGo.
-    if (checkDDG) {
+    if (checkDDG && !keepOwnSite) {
       await sleep(800 + Math.random() * 800);
       if (await olxDdgHasSite(title, loc)) { skippedSite++; continue; }
     }
@@ -1077,6 +1079,7 @@ async function searchOlx(e, payload) {
       zrodlo: "OLX",
       zrodlo_telefonu: phoneSource,
       socialOnly: links.socialOnly,
+      website: links.ownSite || null,
       // Snajper: wyróżnienie/promowanie ogłoszenia i imię osoby kontaktowej.
       isPromoted: Boolean(
         fullOffer?.promotion?.highlighted ||

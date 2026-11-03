@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ChevronDown,
+  Clapperboard,
   Crosshair,
   Eye,
   Flame,
@@ -45,9 +46,9 @@ import {
   DEFAULT_GATES,
   SNIPER_DAILY_SMS_LIMIT,
   SNIPER_DEFAULT_MIN_SCORE,
-  SNIPER_PILLS,
   SNIPER_TOP_LIMIT,
   phoneKey9,
+  pillsFor,
   runSniperScan,
   sniperBridge,
   sniperLeadToRow,
@@ -69,35 +70,81 @@ import { speedConfig } from "@/lib/sms-speed";
 import { readSendSettings } from "@/lib/send-settings";
 import { incrementSent, readSent } from "@/lib/sent-counter";
 import { recordSentMessage } from "@/lib/region-stats";
+import {
+  OFFERS,
+  OFFER_IDS,
+  useOfferSettings,
+  type OfferId,
+} from "@/lib/offer-settings";
 
 const GLASS = "rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl";
 
-const GATE_META: Array<{
-  key: keyof SniperGates;
-  label: string;
-  hint: string;
-}> = [
-  {
-    key: "brokenSites",
-    label: "Łowca Awarii 404/SSL",
-    hint: "Martwe, niezabezpieczone i przestarzałe strony",
+type GateMeta = { key: keyof SniperGates; label: string; hint: string };
+
+const GATES_BY_OFFER: Record<OfferId, GateMeta[]> = {
+  website: [
+    {
+      key: "brokenSites",
+      label: "Łowca Awarii 404/SSL",
+      hint: "Martwe, niezabezpieczone i przestarzałe strony",
+    },
+    {
+      key: "paidAds",
+      label: "Płacący za reklamy OLX",
+      hint: "Wyróżnione ogłoszenia bez własnej strony",
+    },
+    {
+      key: "localLeaders",
+      label: "Lokalni Liderzy 4.5⭐+",
+      hint: "8–90 opinii w Google i brak porządnej strony",
+    },
+    {
+      key: "newCeidg",
+      label: "Nowe firmy CEIDG High-Ticket",
+      hint: "Założone w ostatnich 14 dniach",
+    },
+  ],
+  video_ads: [
+    {
+      key: "adPixels",
+      label: "Inwestujący w reklamy",
+      hint: "Piksel Meta lub Google Ads na stronie firmy",
+    },
+    {
+      key: "paidAds",
+      label: "Promowane ogłoszenia OLX",
+      hint: "Płacą za wyróżnienie — mają budżet na promocję",
+    },
+    {
+      key: "localLeaders",
+      label: "Liderzy opinii 4.5⭐+",
+      hint: "Min. 15 opinii — gotowy materiał do reklamy",
+    },
+    {
+      key: "visualNiche",
+      label: "Branże wizualne i high-ticket",
+      hint: "Efekt pracy dobrze wygląda na wideo, klient dużo wart",
+    },
+  ],
+};
+
+const FUNNEL_COPY: Record<
+  OfferId,
+  { stage2: string; stage2Note: string; stage34: string; stage34Note: string }
+> = {
+  website: {
+    stage2: "Sito 2: Audyt Tech/WWW",
+    stage2Note: "ma nowoczesną stronę",
+    stage34: "Sito 3 & 4: Budżet, Opinie & WHOIS",
+    stage34Note: "martwych wpisów",
   },
-  {
-    key: "paidAds",
-    label: "Płacący za reklamy OLX",
-    hint: "Wyróżnione ogłoszenia bez własnej strony",
+  video_ads: {
+    stage2: "Sito 2: Strona & Piksele reklamowe",
+    stage2Note: "strona nie działa (→ oferta WWW)",
+    stage34: "Sito 3 & 4: Budżet, Opinie & Konkurencja",
+    stage34Note: "bez budżetu lub aktywności",
   },
-  {
-    key: "localLeaders",
-    label: "Lokalni Liderzy 4.5⭐+",
-    hint: "8–90 opinii w Google i brak porządnej strony",
-  },
-  {
-    key: "newCeidg",
-    label: "Nowe firmy CEIDG High-Ticket",
-    hint: "Założone w ostatnich 14 dniach",
-  },
-];
+};
 
 const INTENT_LABEL: Record<SniperLead["intent_category"], string> = {
   EXPIRED_OR_BROKEN_SITE: "🚨 Awaria strony",
@@ -107,6 +154,11 @@ const INTENT_LABEL: Record<SniperLead["intent_category"], string> = {
   OUTDATED_NO_SSL_MOBILE: "🕰️ Stara strona / brak SSL",
   NEW_CEIDG_HIGH_TICKET: "🆕 Nowa firma CEIDG",
   NO_WEBSITE: "🚫 Brak strony",
+  VIDEO_ACTIVE_ADVERTISER: "🎯 Inwestuje w reklamy",
+  VIDEO_PAID_PROMO: "💸 Promowane OLX",
+  VIDEO_REVIEW_LEADER: "⭐ Lider opinii",
+  VIDEO_SOCIAL_ACTIVE: "📱 Aktywny w social media",
+  VIDEO_VISUAL_NICHE: "🎬 Branża wizualna",
 };
 
 const SOURCE_LABEL: Record<SniperLead["source"], string> = {
@@ -191,6 +243,7 @@ function SniperLeadCard({
   vocative,
   onVocative,
   optOut,
+  price,
 }: {
   lead: SniperLead;
   selected: boolean;
@@ -198,12 +251,13 @@ function SniperLeadCard({
   vocative: string | null;
   onVocative: (value: string) => void;
   optOut: boolean;
+  price: string;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const message = useMemo(
-    () => sniperMessageFor(lead, { optOut, vocativeOverride: vocative }),
-    [lead, optOut, vocative],
+    () => sniperMessageFor(lead, { optOut, vocativeOverride: vocative, price }),
+    [lead, optOut, vocative, price],
   );
   const seg = smsSegments(message.body);
   return (
@@ -266,7 +320,10 @@ function SniperLeadCard({
             {lead.local_competitor && (
               <span className="flex items-center gap-1">
                 <Swords className="size-3.5 text-muted-foreground" />
-                Konkurent: {lead.local_competitor}
+                {lead.offer === "video_ads"
+                  ? "Konkurent z pikselem reklamowym"
+                  : "Konkurent"}
+                : {lead.local_competitor}
               </span>
             )}
             {lead.google_reviews_count && lead.google_rating ? (
@@ -317,7 +374,21 @@ function SniperLeadCard({
 
 export function SniperTab() {
   const queryClient = useQueryClient();
-  const [nicheId, setNicheId] = useState<string>(SNIPER_PILLS[0]!.nicheId);
+  const {
+    offer,
+    meta: offerMeta,
+    price,
+    setOffer,
+    setPrice,
+  } = useOfferSettings();
+  const pills = pillsFor(offer);
+  const gateMeta = GATES_BY_OFFER[offer];
+  const funnelCopy = FUNNEL_COPY[offer];
+  const [nicheId, setNicheId] = useState<string>(
+    pillsFor("website")[0]!.nicheId,
+  );
+  const [priceDraft, setPriceDraft] = useState(price);
+  useEffect(() => setPriceDraft(price), [price]);
   const [voivodeshipId, setVoivodeshipId] = useState<string>("swietokrzyskie");
   const region = getVoivodeship(voivodeshipId) ?? VOIVODESHIPS[0]!;
   const [city, setCity] = useState<string>(region.cities[0] ?? "");
@@ -342,6 +413,18 @@ export function SniperTab() {
   } | null>(null);
   const niche = findNiche(nicheId);
 
+  // Zmiana oferty: wynik poprzedniego skanu dotyczył innej usługi, więc go chowamy,
+  // a nisza przeskakuje na pierwszą pigułkę nowej oferty.
+  const [shownOffer, setShownOffer] = useState<OfferId>(offer);
+  useEffect(() => {
+    if (offer === shownOffer) return;
+    setShownOffer(offer);
+    setResult(null);
+    setNicheId(pillsFor(offer)[0]!.nicheId);
+  }, [offer, shownOffer]);
+  const ceidgAvailable = offer === "website";
+  const activeSources = { ...sources, ceidg: sources.ceidg && ceidgAvailable };
+
   const scan = async () => {
     if (!niche) return;
     setRunning(true);
@@ -363,9 +446,11 @@ export function SniperTab() {
           pkd: niche.pkd,
           city,
           voivodeship: region.name,
-          sources,
+          sources: activeSources,
+          offer,
         },
         {
+          offer,
           minScoreThreshold: minScore,
           gates,
           blacklist,
@@ -445,6 +530,7 @@ export function SniperTab() {
         const msg = sniperMessageFor(lead, {
           optOut,
           vocativeOverride: vocativeFor(lead),
+          price,
         });
         return row ? { lead, row, msg } : null;
       })
@@ -548,12 +634,69 @@ export function SniperTab() {
           </span>
         </div>
 
+        <div className="grid gap-4 md:grid-cols-[auto_1fr] md:items-end">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">
+              Czego szukamy — oferta
+            </Label>
+            <div
+              className="flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1"
+              role="group"
+              aria-label="Oferta"
+            >
+              {OFFER_IDS.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={offer === id}
+                  disabled={running}
+                  onClick={() => setOffer(id)}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition ${
+                    offer === id
+                      ? "bg-amber-400 font-semibold text-black"
+                      : "text-muted-foreground hover:bg-white/10"
+                  }`}
+                >
+                  {id === "video_ads" ? (
+                    <Clapperboard className="size-4" />
+                  ) : (
+                    <Globe className="size-4" />
+                  )}
+                  {OFFERS[id].label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label
+              htmlFor="sniper-price"
+              className="text-xs text-muted-foreground"
+            >
+              Cena w SMS-ie ({offerMeta.label}) — w nawiasie, puste = bez ceny
+            </Label>
+            <Input
+              id="sniper-price"
+              value={priceDraft}
+              onChange={(e) => setPriceDraft(e.target.value)}
+              onBlur={() => {
+                if (priceDraft.trim() !== price) setPrice(offer, priceDraft);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              placeholder={offerMeta.defaultPrice}
+            />
+          </div>
+        </div>
+
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground">
-            Nisza High-Ticket
+            {offer === "video_ads"
+              ? "Nisza wizualna / High-Ticket"
+              : "Nisza High-Ticket"}
           </Label>
           <div className="flex flex-wrap gap-2">
-            {SNIPER_PILLS.map((pill) => (
+            {pills.map((pill) => (
               <button
                 key={pill.nicheId}
                 type="button"
@@ -627,9 +770,18 @@ export function SniperTab() {
             <Label className="text-xs text-muted-foreground">Źródła</Label>
             <div className="flex h-9 items-center gap-4 text-xs">
               {(["maps", "olx", "ceidg"] as const).map((key) => (
-                <label key={key} className="flex items-center gap-1.5">
+                <label
+                  key={key}
+                  className={`flex items-center gap-1.5 ${key === "ceidg" && !ceidgAvailable ? "opacity-50" : ""}`}
+                  title={
+                    key === "ceidg" && !ceidgAvailable
+                      ? "Przy reklamach wideo liczą się firmy z budżetem, a nie świeże rejestracje"
+                      : undefined
+                  }
+                >
                   <Switch
-                    checked={sources[key]}
+                    checked={activeSources[key]}
+                    disabled={key === "ceidg" && !ceidgAvailable}
                     onCheckedChange={(v) =>
                       setSources((s) => ({ ...s, [key]: v }))
                     }
@@ -674,7 +826,7 @@ export function SniperTab() {
             </label>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            {GATE_META.map((g) => (
+            {gateMeta.map((g) => (
               <label
                 key={g.key}
                 className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3"
@@ -701,12 +853,17 @@ export function SniperTab() {
           size="lg"
           className="h-auto min-h-12 w-full whitespace-normal rounded-xl bg-amber-400 py-3 text-center text-base font-semibold text-black hover:bg-amber-300"
           disabled={
-            running || !city || !(sources.maps || sources.olx || sources.ceidg)
+            running ||
+            !city ||
+            !(activeSources.maps || activeSources.olx || activeSources.ceidg)
           }
           onClick={() => void scan()}
         >
           {running ? <Loader2 className="animate-spin" /> : <Crosshair />}
-          🎯 Uruchom 5-Stopniowe Sito i Wybierz Złotą 50-tkę
+          🎯 Uruchom 5-Stopniowe Sito i Wybierz Złotą 50-tkę · {
+            offerMeta.icon
+          }{" "}
+          {offerMeta.label}
         </Button>
         {running && progress && (
           <div className="space-y-1.5" role="status">
@@ -729,7 +886,9 @@ export function SniperTab() {
             <FunnelStep
               title="Etap 0: Pobrano surowych"
               value={f.totalScanned}
-              note="firm z Map, OLX i CEIDG"
+              note={
+                ceidgAvailable ? "firm z Map, OLX i CEIDG" : "firm z Map i OLX"
+              }
             />
             <FunnelStep
               title="Sito 1: Komórka Decydenta"
@@ -737,14 +896,14 @@ export function SniperTab() {
               note={`−${f.rejectedByStage[1]} stacjonarnych / korpo / duplikatów`}
             />
             <FunnelStep
-              title="Sito 2: Audyt Tech/WWW"
+              title={funnelCopy.stage2}
               value={f.passedStage2}
-              note={`−${f.rejectedByStage[2]} ma nowoczesną stronę`}
+              note={`−${f.rejectedByStage[2]} ${funnelCopy.stage2Note}`}
             />
             <FunnelStep
-              title="Sito 3 & 4: Budżet, Opinie & WHOIS"
+              title={funnelCopy.stage34}
               value={f.passedStage4}
-              note={`−${f.rejectedByStage[3] + f.rejectedByStage[4]} martwych wpisów`}
+              note={`−${f.rejectedByStage[3] + f.rejectedByStage[4]} ${funnelCopy.stage34Note}`}
             />
             <FunnelStep
               title={`🔥 Sito 5: ZŁOTA ${SNIPER_TOP_LIMIT}-TKA (Score ≥ ${minScore})`}
@@ -790,6 +949,7 @@ export function SniperTab() {
               key={lead.id}
               lead={lead}
               optOut={optOut}
+              price={price}
               selected={!excluded.has(lead.id)}
               onToggle={(value) =>
                 setExcluded((prev) => {

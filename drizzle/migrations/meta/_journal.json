@@ -36,6 +36,13 @@
       "when": 1793462400000,
       "tag": "0004_leads_sniper_qualification",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793750400000,
+      "tag": "0005_leads_offer_type",
+      "breakpoints": true
     }
   ]
 }

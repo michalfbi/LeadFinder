@@ -275,6 +275,7 @@ function createSniperScanner(deps) {
   const now = deps.now ?? (() => Date.now());
 
   async function collect(params, progress, notes) {
+    const video = params?.offer === "video_ads";
     const raw = [];
     const keyword = String(params?.keyword ?? "").trim();
     const city = String(params?.city ?? "").trim();
@@ -332,6 +333,8 @@ function createSniperScanner(deps) {
         city,
         voivodeship,
         maxResults: 50,
+        // Wideo: ogłoszeniodawca z własną stroną to dobry klient, nie odrzucamy go.
+        keepOwnSite: video,
       });
       if (!res?.ok) notes.push(`OLX: ${res?.error ?? "brak wyników"}`);
       else {
@@ -346,6 +349,7 @@ function createSniperScanner(deps) {
               adres: l.adres || null,
               kategoria: l.kategoria || keyword,
               owner_name: l.contactName || null,
+              website: l.website || null,
               reviews: 0,
               is_promoted_ad: l.isPromoted === true,
               social_only: l.socialOnly === true,
@@ -356,7 +360,11 @@ function createSniperScanner(deps) {
       }
     }
 
-    if (sources.ceidg) {
+    if (sources.ceidg && video) {
+      notes.push(
+        "CEIDG pominięte — przy reklamach wideo liczą się firmy z budżetem, a nie świeże rejestracje.",
+      );
+    } else if (sources.ceidg) {
       if (!deps.hasCeidgKey())
         notes.push("CEIDG pominięte — brak klucza API w Ustawieniach.");
       else if (!params?.pkd)
@@ -403,11 +411,11 @@ function createSniperScanner(deps) {
   }
 
   /** Lustro sita 1 — oszczędza audyty dla numerów, które i tak odpadną. */
-  function worthAuditing(r) {
+  function worthAuditing(r, maxReviews) {
     return (
       deps.validatePolishMobile(r.telefon ?? "").isValidMobile &&
       !isCorporateName(r.nazwa) &&
-      (r.reviews ?? 0) <= rules.thresholds.maxReviews
+      (r.reviews ?? 0) <= maxReviews
     );
   }
 
@@ -420,6 +428,10 @@ function createSniperScanner(deps) {
       }
     };
     const notes = [];
+    const video = params?.offer === "video_ads";
+    const maxReviews = video
+      ? rules.video.thresholds.maxReviews
+      : rules.thresholds.maxReviews;
     try {
       const raw = await collect(params, send, notes);
       if (raw.length === 0) {
@@ -435,12 +447,14 @@ function createSniperScanner(deps) {
       // Audyt: kandydaci z własną domeną + kilka mocnych firm jako pula konkurentów.
       const ownSite = (r) =>
         r.website && !isSocialUrl(r.website) && !isFreeBuilderUrl(r.website);
-      const toAudit = raw.filter((r) => ownSite(r) && worthAuditing(r));
+      const toAudit = raw.filter(
+        (r) => ownSite(r) && worthAuditing(r, maxReviews),
+      );
       const rivals = raw
         .filter(
           (r) =>
             ownSite(r) &&
-            !worthAuditing(r) &&
+            !worthAuditing(r, maxReviews) &&
             (r.rating ?? 0) >= rules.thresholds.competitorMinRating,
         )
         .slice(0, COMPETITOR_AUDITS);
@@ -465,8 +479,10 @@ function createSniperScanner(deps) {
       });
 
       // Wolne domeny: brak strony / social / kreator / awaria strony.
+      // Wolne domeny są argumentem tylko w ofercie WWW.
       const needsDomain = raw.filter((r) => {
-        if (!worthAuditing(r)) return false;
+        if (video) return false;
+        if (!worthAuditing(r, maxReviews)) return false;
         if (!ownSite(r)) return true;
         const a = r.tech_audit;
         return a && (a.httpStatus === null || a.httpStatus >= 400);

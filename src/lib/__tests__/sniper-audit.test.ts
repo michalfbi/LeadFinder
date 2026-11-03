@@ -183,3 +183,73 @@ describe("skaner Snajpera", () => {
     expect(sent.length).toBeGreaterThan(0);
   });
 });
+
+describe("skaner Snajpera — oferta wideo", () => {
+  it("zostawia OLX z własną stroną, pomija CEIDG i sprawdzanie domen", async () => {
+    let olxParams: Record<string, unknown> = {};
+    let domainChecks = 0;
+    const scanner = createSniperScanner({
+      scrapeGoogleMaps: async () => ({
+        ok: true,
+        items: [
+          {
+            name: "Detailing Nowak",
+            phone: "601 234 567",
+            website: "https://nowak.pl",
+            rating: 4.9,
+            reviews: 220,
+            url: "x!1sAAA!",
+          },
+        ],
+      }),
+      searchOlx: async (_e: unknown, params: Record<string, unknown>) => {
+        olxParams = params;
+        return {
+          ok: true,
+          leads: [
+            {
+              id: "olx-2",
+              nazwa: "Folie PPF",
+              telefon: "+48604567890",
+              miasto: "Kielce",
+              website: "https://folie.pl",
+              olxUrl: "u",
+            },
+          ],
+        };
+      },
+      searchCeidg: async () => {
+        throw new Error("CEIDG nie powinien być odpytany");
+      },
+      hasCeidgKey: () => true,
+      validatePolishMobile: () => ({ isValidMobile: true }),
+      suggestDomains: () => ["x"],
+      checkDomainAvailability: async () => {
+        domainChecks++;
+        return { available: true };
+      },
+      fetchImpl: async (url: string) => response(200, MODERN_PAGE, url),
+      userAgent: "test",
+    });
+    const res = await scanner.runDeepScan(null, {
+      keyword: "folie ppf",
+      city: "Kielce",
+      voivodeship: "",
+      pkd: "45.20.Z",
+      offer: "video_ads",
+      sources: { maps: true, olx: true, ceidg: true },
+    });
+    expect(res.ok).toBe(true);
+    expect(olxParams["keepOwnSite"]).toBe(true);
+    expect(domainChecks).toBe(0);
+    expect(res.notes[0]).toMatch(/CEIDG pominięte/);
+    // 220 opinii: przy ofercie wideo firma nadal jest audytowana (limit 400).
+    expect(
+      res.raw.find((r: { id: string }) => r.id.startsWith("gmaps/")).tech_audit
+        .httpStatus,
+    ).toBe(200);
+    expect(res.raw.find((r: { id: string }) => r.id === "olx-2").website).toBe(
+      "https://folie.pl",
+    );
+  });
+});

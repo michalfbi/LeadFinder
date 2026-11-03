@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import sniperRules from "../../sniper-rules.json";
 
 const LEGACY_KEY = "leadfinder.message-template";
 const STORAGE_KEY = "leadfinder.message-templates";
@@ -366,7 +367,17 @@ export type SniperIntent =
   | "HIGH_REVIEWS_NO_SITE"
   | "OUTDATED_NO_SSL_MOBILE"
   | "NEW_CEIDG_HIGH_TICKET"
-  | "NO_WEBSITE";
+  | "NO_WEBSITE"
+  | "VIDEO_ACTIVE_ADVERTISER"
+  | "VIDEO_PAID_PROMO"
+  | "VIDEO_REVIEW_LEADER"
+  | "VIDEO_SOCIAL_ACTIVE"
+  | "VIDEO_VISUAL_NICHE";
+
+/** Intencje oferty „Reklamy wideo AI”. */
+export function isVideoIntent(intent: SniperIntent): boolean {
+  return intent.startsWith("VIDEO_");
+}
 
 /** Formy grzecznościowe dopasowane do płci adresata; bez pewnej płci — „Państwo”. */
 type Forms = {
@@ -400,6 +411,11 @@ export const SNIPER_TEMPLATE_LABELS: Record<SniperIntent, string> = {
   OUTDATED_NO_SSL_MOBILE: "🎯 Snajper · Stara strona / brak SSL",
   NEW_CEIDG_HIGH_TICKET: "🎯 Snajper · Nowa firma CEIDG",
   NO_WEBSITE: "🎯 Snajper · Brak strony",
+  VIDEO_ACTIVE_ADVERTISER: "🎬 Wideo · Inwestuje w reklamy",
+  VIDEO_PAID_PROMO: "🎬 Wideo · Promowane OLX",
+  VIDEO_REVIEW_LEADER: "🎬 Wideo · Lider opinii",
+  VIDEO_SOCIAL_ACTIVE: "🎬 Wideo · Aktywny w social media",
+  VIDEO_VISUAL_NICHE: "🎬 Wideo · Branża wizualna",
 };
 
 export type SniperMessageInput = {
@@ -408,7 +424,14 @@ export type SniperMessageInput = {
   vars: MessageVars;
   /** Dopisuje zdanie z możliwością rezygnacji (odpowiedź „NIE”). */
   optOut?: boolean | undefined;
+  /** Tekst ceny wstawiany w nawiasie; brak = cena domyślna oferty, pusty tekst = bez ceny. */
+  price?: string | undefined;
 };
+
+/** Cena domyślna oferty, do której należy intencja (z sniper-rules.json). */
+export function defaultSniperPrice(intent: SniperIntent): string {
+  return isVideoIntent(intent) ? sniperRules.offers.video_ads.defaultPrice : sniperRules.offers.website.defaultPrice;
+}
 
 /**
  * Zwraca szablon Spintax dla kategorii intencji. Zdania z faktami (domena,
@@ -423,7 +446,10 @@ export function sniperTemplate(input: SniperMessageInput): string {
   const hasReviews = reviews > 0 && Number(String(v.ocena).replace(",", ".")) > 0;
   const hasRival = Boolean(v.konkurent);
   const hello = "{Dzień dobry|Witam}{zwrot}";
-  const price = "(1490 zł na gotowo, 0 zł zaliczki)";
+  const priceText = (input.price ?? defaultSniperPrice(input.intent)).trim().replace(/^\((.*)\)$/, "$1").trim();
+  const price = priceText ? ` (${priceText})` : "";
+  const videoAsk = `{Mogę przygotować darmowy, 15-sekundowy przykład|Mogę za darmo pokazać, jak mogłaby wyglądać ${f.pana} reklama}?`;
+  const videoCraft = `z prawdziwych zdjęć ${f.pana} realizacji, z napisami i lektorem`;
   const domainAsk = hasDomain
     ? `Domena {wolna_domena} jest wolna – mogę {przygotować darmowy projekt, jak mogłaby wyglądać ${f.pana} strona|podesłać niezobowiązującą wizualizację strony pod tym adresem}?`
     : `Mogę {przygotować darmowy projekt, jak mogłaby wyglądać ${f.pana} strona|podesłać niezobowiązującą wizualizację strony}?`;
@@ -438,7 +464,7 @@ export function sniperTemplate(input: SniperMessageInput): string {
         `${hello}, trafiłem na ${f.pana} wyróżnione ogłoszenie na OLX ({branza}, {miasto}). ` +
         `{Widzę, że ${f.inwestuje} ${f.pan} w promocję, ale w opisie brakuje linku do własnej strony z realizacjami|` +
         `${capitalizeFirst(f.placi)} ${f.pan} za wyróżnienia, a klienci nie mają gdzie zobaczyć pełnego portfolio}. ` +
-        `Robię strony pod klucz ${price}. ${domainAsk}`;
+        `Robię strony pod klucz${price}. ${domainAsk}`;
       break;
     case "HIGH_REVIEWS_NO_SITE":
       body =
@@ -446,13 +472,13 @@ export function sniperTemplate(input: SniperMessageInput): string {
         (hasRival
           ? "W wizytówce brakuje jednak własnej strony www, a np. {konkurent} już ją ma. "
           : "W wizytówce brakuje jednak własnej strony www, więc część klientów może wybierać konkurencję. ") +
-        `Robię strony pod klucz ${price}. ${domainAsk}`;
+        `Robię strony pod klucz${price}. ${domainAsk}`;
       break;
     case "SOCIAL_OR_FREE_BUILDER":
       body =
         `${hello}, trafiłem na {nazwa} ({miasto}).${reviewsLine} ` +
         `Widzę, że ${f.kieruje} ${f.pan} klientów {diagnoza_tech} zamiast na własną stronę z domeną. ` +
-        `Robię strony pod klucz ${price}. ${domainAsk}`;
+        `Robię strony pod klucz${price}. ${domainAsk}`;
       break;
     case "EXPIRED_OR_BROKEN_SITE":
     case "OUTDATED_NO_SSL_MOBILE":
@@ -461,18 +487,47 @@ export function sniperTemplate(input: SniperMessageInput): string {
         (hasRival
           ? "Klienci z Google mogą przez to wybierać konkurencję, np. {konkurent}. "
           : "Klienci z Google mogą przez to rezygnować z kontaktu. ") +
-        `Mogę postawić nową, szybką stronę pod klucz ${price} – {podesłać darmowy projekt nowej wersji|pokazać, jak mogłaby wyglądać}?`;
+        `Mogę postawić nową, szybką stronę pod klucz${price} – {podesłać darmowy projekt nowej wersji|pokazać, jak mogłaby wyglądać}?`;
       break;
     case "NEW_CEIDG_HIGH_TICKET":
       body =
         `${hello}, gratuluję założenia firmy {nazwa}! Klienci w branży {branza} szukają wykonawców głównie w Google. ` +
-        `Robię strony pod klucz ${price}. ${domainAsk}`;
+        `Robię strony pod klucz${price}. ${domainAsk}`;
+      break;
+    case "VIDEO_ACTIVE_ADVERTISER":
+      body =
+        `${hello}, zauważyłem, że strona {nazwa} jest przygotowana pod reklamy w internecie. ` +
+        `Robię krótkie reklamy wideo na Facebooka i Instagram dla branży {branza} – ${videoCraft}${price}. ${videoAsk}`;
+      break;
+    case "VIDEO_PAID_PROMO":
+      body =
+        `${hello}, trafiłem na ${f.pana} wyróżnione ogłoszenie na OLX ({branza}, {miasto}). ` +
+        `Skoro ${f.inwestuje} ${f.pan} w promocję, krótka reklama wideo na Facebooku i Instagramie pokaże ${f.pana} pracę większej liczbie osób z okolicy. ` +
+        `Robię takie reklamy ${videoCraft}${price}. ${videoAsk}`;
+      break;
+    case "VIDEO_REVIEW_LEADER":
+      body =
+        `${hello}, trafiłem na {nazwa} w Mapach Google ({miasto}).${reviewsLine} ` +
+        `Z takich opinii da się zrobić bardzo przekonującą reklamę wideo. ` +
+        `Robię takie reklamy na Facebooka i Instagram ${videoCraft}${price}. ${videoAsk}`;
+      break;
+    case "VIDEO_SOCIAL_ACTIVE":
+      body =
+        `${hello}, trafiłem na {nazwa} ({miasto}).${reviewsLine} ` +
+        `Widzę, że ${f.kieruje} ${f.pan} klientów {diagnoza_tech} – to idealne miejsce na krótkie reklamy wideo. ` +
+        `Robię je ${videoCraft}${price}. ${videoAsk}`;
+      break;
+    case "VIDEO_VISUAL_NICHE":
+      body =
+        `${hello}, trafiłem na {nazwa} ({miasto}).${reviewsLine} ` +
+        `W branży {branza} krótkie reklamy wideo dobrze pokazują efekty pracy. ` +
+        `Robię je ${videoCraft}${price}. ${videoAsk}`;
       break;
     case "NO_WEBSITE":
     default:
       body =
         `${hello}, nie znalazłem strony internetowej firmy {nazwa} ({miasto}).${reviewsLine} ` +
-        `Robię strony dla lokalnych firm ${price}. ${domainAsk}`;
+        `Robię strony dla lokalnych firm${price}. ${domainAsk}`;
       break;
   }
   if (input.optOut !== false) {
