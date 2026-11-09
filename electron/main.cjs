@@ -1,12 +1,13 @@
 // LeadFinder B2B — proces główny Electron (macOS)
 // Aplikacja działa w pełni lokalnie: interfejs z folderu dist/client,
 // dane w plikach JSON na dysku, zapytania do Google Places bezpośrednio z komputera.
-const { app, BrowserWindow, ipcMain, Menu, Notification, powerSaveBlocker, safeStorage, screen, nativeTheme } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, Notification, powerSaveBlocker, safeStorage, screen, shell, nativeTheme } = require("electron");
 const { secondaryDisplay, animateWindowToSecondaryDisplay } = require("./window-motion.cjs");
 const { createAutopilot } = require("./autopilot.cjs");
 const { createEmailEngine } = require("./email.cjs");
 const { collectOffers, offerDetail } = require("./olx-results.cjs");
 const { createSniperScanner } = require("./sniper-audit.cjs");
+const { openStoreSafely, LEAD_FILES, LEDGER_FILES } = require("./store.cjs");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -59,7 +60,34 @@ function dataFile(name) {
   return path.join(app.getPath("userData"), name);
 }
 
+// Baza SQLite (electron/store.cjs) przejmuje leady, rejestry wysyłek i listy blokad.
+// Otwierana leniwie przy pierwszym odczycie danych; przy pierwszym uruchomieniu
+// przenosi dane z plików JSON (z kopią zapasową).
+let storeHandle = null;
+function dataStore() {
+  if (!storeHandle) {
+    storeHandle = openStoreSafely({ dir: app.getPath("userData") });
+    if (storeHandle.state === "sqlite" && storeHandle.migration?.migrated) {
+      console.log("Dane przeniesione do bazy SQLite:", JSON.stringify(storeHandle.migration.counts));
+    }
+  }
+  return storeHandle;
+}
+const STORE_BROKEN_MESSAGE =
+  "Baza danych LeadFinder jest niedostępna. Zamknij aplikację i uruchom ją ponownie; jeśli błąd wraca, przywróć kopię z folderu „backups”. Wysyłka jest wstrzymana, żeby nikt nie dostał wiadomości dwa razy.";
+
+/** Czy ten plik jest obsługiwany przez bazę. W stanie „broken” rzuca błąd zamiast wracać do starych plików. */
+function storeFor(file) {
+  const name = path.basename(String(file));
+  if (!(name in LEAD_FILES) && !(name in LEDGER_FILES)) return null;
+  const handle = dataStore();
+  if (handle.state === "broken") throw new Error(`${STORE_BROKEN_MESSAGE} (${handle.error})`);
+  return handle.state === "sqlite" ? handle.store : null;
+}
+
 function readJson(file, fallback) {
+  const store = storeFor(file);
+  if (store) return store.readFile(file);
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"));
   } catch {
@@ -68,6 +96,8 @@ function readJson(file, fallback) {
 }
 
 function writeJson(file, value) {
+  const store = storeFor(file);
+  if (store) return store.writeFile(file, value);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(value, null, 2), "utf8");
 }
@@ -75,6 +105,29 @@ function writeJson(file, value) {
 const readSettings = () => ({ googleApiKey: "", ceidgApiKey: "", ...readJson(dataFile("settings.json"), {}) });
 const readLeads = () => readJson(dataFile("leads.json"), []);
 const writeLeads = (rows) => writeJson(dataFile("leads.json"), rows);
+
+// Stan bazy danych dla widoku Ustawień.
+ipcMain.handle("store:status", () => {
+  const handle = dataStore();
+  if (handle.state !== "sqlite") return { engine: handle.state, error: handle.error ?? null };
+  return { ...handle.store.status(), error: null };
+});
+ipcMain.handle("store:backup", () => {
+  const handle = dataStore();
+  if (handle.state !== "sqlite") throw new Error("Kopia zapasowa wymaga działającej bazy danych.");
+  const file = handle.store.backup();
+  return { file, ...handle.store.status() };
+});
+ipcMain.handle("store:openBackups", () => {
+  const dir = path.join(app.getPath("userData"), "backups");
+  fs.mkdirSync(dir, { recursive: true });
+  return shell.openPath(dir);
+});
+ipcMain.handle("store:events", (_e, kind, id) => {
+  const handle = dataStore();
+  if (handle.state !== "sqlite") return [];
+  return id ? handle.store.events.forLead(kind === "email" ? "email" : "sms", String(id)) : handle.store.events.recent(100);
+});
 
 ipcMain.handle("settings:get", () => readSettings());
 ipcMain.handle("settings:set", (_e, value) => {
@@ -189,6 +242,18 @@ function cacheDb() {
     console.warn("Pamięć podręczna wyłączona (brak dostępu do pliku bazy):", String(err?.message || err));
   }
   return db;
+}
+
+/**
+ * Połączenie z listami blokad („blacklist”, „email_blacklist”). Po migracji to
+ * widoki na wspólną tabelę suppression w głównej bazie; bez bazy zostaje stary
+ * plik cache. W stanie „broken” zwraca null — brak listy blokad wstrzymuje wysyłkę.
+ */
+function blockDb() {
+  const handle = dataStore();
+  if (handle.state === "sqlite") return handle.store.db;
+  if (handle.state === "broken") return null;
+  return cacheDb();
 }
 
 function cacheRead(key) {
@@ -968,7 +1033,7 @@ async function searchOlx(e, payload) {
 
   const blacklist = new Set();
   try {
-    const conn = cacheDb();
+    const conn = blockDb();
     if (conn) for (const r of conn.prepare("SELECT phone FROM blacklist").all()) blacklist.add(blacklistKey(r.phone));
   } catch {
     /* brak czarnej listy nie blokuje skanu */
@@ -1706,7 +1771,7 @@ function checkDeliveryNow(existingConn) {
     }
     if (failed.length) {
       writeLeads(all);
-      const bl = cacheDb();
+      const bl = blockDb();
       for (const lead of failed) {
         const key = blacklistKey(lead.telefon);
         if (bl && key) {
@@ -1811,7 +1876,7 @@ function blacklistKey(phone) {
 ipcMain.handle("blacklist:add", (_e, phone) => {
   const key = blacklistKey(phone);
   if (!key) return { ok: false, error: "Nieprawidłowy numer" };
-  const conn = cacheDb();
+  const conn = blockDb();
   if (!conn) return { ok: false, error: "Baza czarnej listy niedostępna" };
   try {
     conn.prepare("INSERT OR IGNORE INTO blacklist (phone, added_at) VALUES (?, ?)").run(key, Date.now());
@@ -1821,7 +1886,7 @@ ipcMain.handle("blacklist:add", (_e, phone) => {
   }
 });
 ipcMain.handle("blacklist:getAll", () => {
-  const conn = cacheDb();
+  const conn = blockDb();
   if (!conn) return [];
   try {
     return conn.prepare("SELECT phone FROM blacklist").all().map((r) => String(r.phone));
@@ -2008,6 +2073,16 @@ async function sendBulk(event, items, options) {
         const freshHistory = historyHasPhone(chatDb, item.phone);
         if (freshHistory !== false) {
           results.push({id:item.id,ok:false,skipped:true,reason:"history",error:"Numer w historii lub historia niedostępna"});
+          continue;
+        }
+        // Wspólna lista blokad: rezygnacja zgłoszona dowolnym kanałem (SMS lub e-mail) wstrzymuje wysyłkę.
+        const blocks = blockDb();
+        if (!blocks) {
+          results.push({id:item.id,ok:false,skipped:true,reason:"blocked",error:"Lista blokad niedostępna — wysyłka wstrzymana"});
+          continue;
+        }
+        if (blocks.prepare("SELECT 1 AS hit FROM blacklist WHERE phone = ?").get(blacklistKey(item.phone))) {
+          results.push({id:item.id,ok:false,skipped:true,reason:"blocked",error:"Numer jest na liście blokad"});
           continue;
         }
         // Persist the one-attempt reservation before invoking macOS, surviving a crash.
@@ -2335,6 +2410,13 @@ ipcMain.handle("widget:openMain", async () => {
 });
 
 app.whenReady().then(() => {
+  // Otwarcie bazy (z jednorazową migracją) i codzienna kopia zapasowa.
+  try {
+    const handle = dataStore();
+    if (handle.state === "sqlite") handle.store.backupIfDue();
+  } catch (err) {
+    console.warn("Kopia zapasowa bazy nie powiodła się:", String(err?.message || err));
+  }
   buildAppMenu();
   createWindow();
   startBackgroundReplyMonitor();
@@ -2354,7 +2436,7 @@ const localEvent = {sender: {send() {}, isDestroyed: () => true}};
 function initAutopilot() {
   const changed = () => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("autopilot:changed"); };
   emailEngine = createEmailEngine({
-    file:dataFile,read:readJson,write:writeJson,db:cacheDb,sleep,fetch:harvestFetch,
+    file:dataFile,read:readJson,write:writeJson,db:blockDb,sleep,fetch:harvestFetch,
     ceidg:ceidgGet,ceidgBase:CEIDG_BASE,ceidgKey:()=>readSettings().ceidgApiKey,
     changed:()=>{for(const w of BrowserWindow.getAllWindows())if(!w.isDestroyed())w.webContents.send("email:changed");},
     encrypt:t=>{if(!safeStorage.isEncryptionAvailable())throw new Error("Szyfrowanie skrzynki niedostępne.");return safeStorage.encryptString(t).toString("base64");},
@@ -2370,7 +2452,7 @@ function initAutopilot() {
   autopilot = createAutopilot({
     file: dataFile, read: readJson, write: writeJson, changed,
     leads: () => [...readLeads(), ...Object.keys(readJson(dataFile("sms-ledger.json"), {})).map(telefon => ({telefon, sms_reserved_at: true}))],
-    blocked: () => {const c=cacheDb(); return c ? c.prepare("SELECT phone FROM blacklist").all().map(r=>r.phone) : [];},
+    blocked: () => {const c=blockDb(); return c ? c.prepare("SELECT phone FROM blacklist").all().map(r=>r.phone) : [];},
     validPhone: p => validatePolishMobile(p).isValidMobile,
     email:emailEngine,
     openHistory: openChatDb, closeHistory: closeChatDb, history: historyHasPhone,

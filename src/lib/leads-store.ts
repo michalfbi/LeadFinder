@@ -329,6 +329,12 @@ type DesktopBridge = {
   };
   enrich?: (url: string) => Promise<{ ok: boolean; html?: string }>;
   bulkSend?: unknown;
+  store?: {
+    status: () => Promise<StoreStatus>;
+    backup: () => Promise<StoreStatus & { file: string }>;
+    openBackups: () => Promise<string>;
+    events: (kind?: "sms" | "email", id?: string) => Promise<StoreEvent[]>;
+  };
   sniper?: {
     runDeepScan: (
       params: SniperScanParams,
@@ -540,3 +546,27 @@ export async function addLeadsBulk(
   if (fresh.length > 0) await insertLeads(fresh);
   return { addedCount: fresh.length, skippedCount: rows.length - fresh.length, addedPhones };
 }
+
+/** Stan bazy danych na Macu (electron/store.cjs). */
+export type StoreStatus = {
+  engine: "sqlite" | "json" | "broken";
+  error: string | null;
+  file?: string;
+  migratedAt?: string | null;
+  lastBackupAt?: string | null;
+  backups?: number;
+  leads?: { sms: number; email: number };
+  events?: number;
+  suppression?: number;
+};
+
+/** Wpis dziennika zdarzeń leada. */
+export type StoreEvent = {
+  kind?: "sms" | "email";
+  lead_id?: string;
+  type: string;
+  from_value: string | null;
+  to_value: string | null;
+  data: string | null;
+  at: number;
+};

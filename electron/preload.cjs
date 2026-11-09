@@ -114,6 +114,14 @@ contextBridge.exposeInMainWorld("leadfinder", {
     },
   },
 
+  // Baza danych: stan, kopie zapasowe i dziennik zdarzeń leada.
+  store: {
+    status: () => ipcRenderer.invoke("store:status"),
+    backup: () => ipcRenderer.invoke("store:backup"),
+    openBackups: () => ipcRenderer.invoke("store:openBackups"),
+    events: (kind, id) => ipcRenderer.invoke("store:events", kind, id),
+  },
+
   // Snajper Top 50: Mapy/OLX/CEIDG + audyt HTTP/TLS/DOM + wolne domeny .pl.
   sniper: {
     runDeepScan: (params, onProgress) => {
