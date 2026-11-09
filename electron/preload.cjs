@@ -114,6 +114,19 @@ contextBridge.exposeInMainWorld("leadfinder", {
     },
   },
 
+  // Skrzynka odpowiedzi: klasyfikacja, szkice i decyzje właściciela.
+  inbox: {
+    list: (filter) => ipcRenderer.invoke("inbox:list", filter),
+    counts: () => ipcRenderer.invoke("inbox:counts"),
+    approve: (id, body) => ipcRenderer.invoke("inbox:approve", id, body),
+    dismiss: (id) => ipcRenderer.invoke("inbox:dismiss", id),
+    block: (id) => ipcRenderer.invoke("inbox:block", id),
+    settings: () => ipcRenderer.invoke("inbox:settings"),
+    configure: (value) => ipcRenderer.invoke("inbox:configure", value),
+    testAi: () => ipcRenderer.invoke("inbox:testAi"),
+    onChanged: (cb) => { const h = () => cb(); ipcRenderer.on("inbox:changed", h); return () => ipcRenderer.removeListener("inbox:changed", h); },
+  },
+
   // Baza danych: stan, kopie zapasowe i dziennik zdarzeń leada.
   store: {
     status: () => ipcRenderer.invoke("store:status"),

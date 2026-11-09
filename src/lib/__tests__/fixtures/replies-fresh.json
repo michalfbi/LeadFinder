@@ -1,0 +1,257 @@
+[
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Appreciate it but we're covered."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Hard no."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "I'm good, thanks."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Please cease all communication."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "We just had ours redone in March."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Not a priority for us, ever."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Delete my info."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "You've got the wrong business."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "We don't do email marketing stuff. Bye."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Nothing personal, just no."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Thanks anyway."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Website works fine for what we need."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "I sold the company two years ago."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Quit spamming me."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Kindly refrain from contacting us."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "We use a marketing agency for all that."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Dziękuję, obejdzie się."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Nie ma takiej potrzeby."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Strona zrobiona rok temu, wystarczy."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Proszę o usunięcie moich danych."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Nie, pozdrawiam."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Dajcie mi święty spokój."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Syn mi zrobił stronę."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Nie odpowiadam na takie oferty."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Firma w likwidacji."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Nie dzwońcie i nie piszcie."
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "Who told you my site was broken?"
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "I don't know you. How do you have this address?"
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "Is this one of those overseas scams?"
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "My IT guy says this is phishing."
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "Why are you looking at my website?"
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "Prove you're a real company."
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "This feels shady."
+ },
+ {
+  "lang": "pl",
+  "category": "nieufnosc",
+  "text": "Skąd pan wie, że nie mam strony?"
+ },
+ {
+  "lang": "pl",
+  "category": "nieufnosc",
+  "text": "To jakaś ściema?"
+ },
+ {
+  "lang": "pl",
+  "category": "nieufnosc",
+  "text": "Nie znam pana. Kto pana upoważnił?"
+ },
+ {
+  "lang": "pl",
+  "category": "nieufnosc",
+  "text": "Sprawdziłem, takiej firmy nie ma w KRS."
+ },
+ {
+  "lang": "pl",
+  "category": "nieufnosc",
+  "text": "Podam to na policję."
+ },
+ {
+  "lang": "en",
+  "category": "zainteresowany",
+  "text": "Fine, send the mockup."
+ },
+ {
+  "lang": "en",
+  "category": "zainteresowany",
+  "text": "I'd be open to seeing it."
+ },
+ {
+  "lang": "en",
+  "category": "zainteresowany",
+  "text": "Sure thing, what's next?"
+ },
+ {
+  "lang": "en",
+  "category": "zainteresowany",
+  "text": "Go for it."
+ },
+ {
+  "lang": "pl",
+  "category": "zainteresowany",
+  "text": "Dobrze, proszę przygotować."
+ },
+ {
+  "lang": "pl",
+  "category": "zainteresowany",
+  "text": "Może być, proszę wysłać."
+ },
+ {
+  "lang": "en",
+  "category": "cena",
+  "text": "And the hosting, is that extra?"
+ },
+ {
+  "lang": "en",
+  "category": "cena",
+  "text": "Total cost out the door?"
+ },
+ {
+  "lang": "pl",
+  "category": "cena",
+  "text": "Ile za taką stronę?"
+ },
+ {
+  "lang": "en",
+  "category": "nie_teraz",
+  "text": "Ask me again after tax season."
+ },
+ {
+  "lang": "pl",
+  "category": "nie_teraz",
+  "text": "Po Nowym Roku proszę."
+ },
+ {
+  "lang": "en",
+  "category": "inne",
+  "text": "Hmm."
+ },
+ {
+  "lang": "en",
+  "category": "inne",
+  "text": "Received."
+ }
+]

@@ -209,6 +209,8 @@ import {
 import { SmsSpeedPanel } from '@/components/sms-speed-panel';
 import { SniperWorkspace } from "@/components/sniper-workspace";
 import { EmailOutreach } from "@/components/email-outreach";
+import { InboxView } from "@/components/inbox-view";
+import { listInbox, onInboxChange } from "@/lib/inbox-store";
 import { DataStoreCard } from "@/components/data-store-card";
 import { offerOf, readOfferPrice, useOfferSettings } from "@/lib/offer-settings";
 import { offerMessageForRow } from "@/lib/sniper-sieve";
@@ -559,6 +561,14 @@ function Index() {
 
   const { data: leads = [] } = useLeads();
   const hot = leads.filter(l => l.status === "odpisal").length;
+  const [inboxPending, setInboxPending] = useState(0);
+  useEffect(() => {
+    const refresh = () => void listInbox()
+      .then(rows => setInboxPending(rows.filter(m => m.status === "pending" || m.status === "sending").length))
+      .catch(() => setInboxPending(0));
+    refresh();
+    return onInboxChange(refresh);
+  }, []);
   const destination = APP_DESTINATIONS.find(d => d.id === activeTab);
   const subviews = activeTab === "base" || activeTab === "calls" ? [
     { id: "base", label: "Cała baza" }, { id: "calls", label: "Do dzwonienia" },
@@ -585,7 +595,7 @@ function Index() {
 
   return (
     <main className="app-shell bg-macos-canvas text-foreground">
-      <AppSidebar active={navigationGroup} onNavigate={setActiveTab} hot={hot} />
+      <AppSidebar active={navigationGroup} onNavigate={setActiveTab} hot={hot} inboxPending={inboxPending} />
       <div className="app-workspace min-w-0">
         {pilotNote && (
           <div role="status" className="apple-glass-panel fixed left-1/2 top-4 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium shadow-lg">
@@ -595,7 +605,7 @@ function Index() {
         )}
         <header className="workspace-header flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-primary" />{activeTab === "email" ? "Kanał e-mail" : "Kanał SMS"}<span className="text-border">/</span>{activeTab === "email" ? "🇺🇸 USA · Strony WWW" : `${activeOffer.icon} ${activeOffer.label}`}<span className="text-border">/</span>Przestrzeń robocza</p>
+            <p className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-primary" />{activeTab === "email" ? "Kanał e-mail" : activeTab === "inbox" ? "SMS i e-mail" : "Kanał SMS"}<span className="text-border">/</span>{activeTab === "email" ? "🇺🇸 USA · Strony WWW" : `${activeOffer.icon} ${activeOffer.label}`}<span className="text-border">/</span>Przestrzeń robocza</p>
             <h2 className="text-2xl font-semibold">{destination?.label ?? (navigationGroup === "base" ? "Moja Baza" : navigationGroup === "analytics" ? "Analityka" : "Szablony & Wysyłka")}</h2>
           </div>
           <div className="flex items-center gap-3"><span className="hidden text-xs tabular-nums text-muted-foreground sm:block">{leads.length} kontaktów</span><SentCounterBadge /></div>
@@ -613,6 +623,7 @@ function Index() {
           </TabsContent>
           <TabsContent value="sniper" forceMount className="data-[state=inactive]:hidden"><SniperWorkspace onGo={setActiveTab} /></TabsContent>
           <TabsContent value="email"><EmailOutreach /></TabsContent>
+          <TabsContent value="inbox"><InboxView /></TabsContent>
           <TabsContent value="base"><BaseTab /></TabsContent>
           <TabsContent value="calls"><CallListTab /></TabsContent>
           <TabsContent value="offer"><OfferTab /></TabsContent>

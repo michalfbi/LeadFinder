@@ -8,6 +8,7 @@ const { createEmailEngine } = require("./email.cjs");
 const { collectOffers, offerDetail } = require("./olx-results.cjs");
 const { createSniperScanner } = require("./sniper-audit.cjs");
 const { openStoreSafely, LEAD_FILES, LEDGER_FILES } = require("./store.cjs");
+const { createInbox, classifyRules, BLOCKING: BLOCKING_REPLIES } = require("./inbox.cjs");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -1690,10 +1691,11 @@ function checkRepliesNow() {
   if (!conn) return { ok: false, checked: 0, updated: 0, repliedLeads: [], error: chatDbError ?? "Brak dostępu do chat.db" };
   let checked = 0;
   const repliedLeads = [];
+  const replies = [];
   try {
     const all = readLeads();
     const stmt = conn.prepare(
-      `SELECT m.ROWID,
+      `SELECT m.ROWID AS rowid, m.text AS text,
          (CASE WHEN m.date > 100000000000 THEN m.date / 1000000000 ELSE m.date END) AS sec
        FROM message m JOIN handle h ON m.handle_id = h.ROWID
        WHERE h.id LIKE ? AND m.is_from_me = 0
@@ -1717,6 +1719,11 @@ function checkRepliesNow() {
           // Atrybucja: pierwsza odpowiedź klienta = moment zaangażowania.
           if (!lead.engaged_at) lead.engaged_at = lead.replied_at;
           lead.status_changed_at = now;
+          // Treść odpowiedzi dla skrzynki; pusta, gdy macOS trzyma ją tylko w formacie binarnym.
+          const text = typeof row.text === "string" ? row.text : "";
+          const verdict = classifyRules(text);
+          lead.reply_category = verdict.category;
+          replies.push({ lead: { ...lead }, text, rowid: row.rowid, at: Date.parse(lead.replied_at) });
           repliedLeads.push(lead);
         }
       } catch (err) {
@@ -1724,9 +1731,9 @@ function checkRepliesNow() {
       }
     }
     if (repliedLeads.length > 0) writeLeads(all);
-    return { ok: true, checked, updated: repliedLeads.length, repliedLeads };
+    return { ok: true, checked, updated: repliedLeads.length, repliedLeads, replies };
   } catch (err) {
-    return { ok: false, checked, updated: repliedLeads.length, repliedLeads, error: String(err?.message || err) };
+    return { ok: false, checked, updated: repliedLeads.length, repliedLeads, replies, error: String(err?.message || err) };
   } finally {
     closeChatDb(conn);
   }
@@ -1815,11 +1822,19 @@ function guardDeliveryStreak() {
 
 function notifyReplies(result) {
   if (!result.ok || !result.repliedLeads.length) return;
+  // Każda odpowiedź SMS trafia do skrzynki: odmowy są blokowane, reszta dostaje szkic do zatwierdzenia.
+  for (const r of result.replies ?? []) {
+    inbox
+      ?.ingest({ channel: "sms", lead: r.lead, address: r.lead.telefon, text: r.text, at: r.at, externalId: r.rowid, outbound: r.lead.sms_exact_text })
+      .catch((err) => console.warn("Skrzynka odpowiedzi:", String(err?.message || err)));
+  }
   for (const w of BrowserWindow.getAllWindows()) {
     try { w.webContents.send("leads:changed"); } catch {}
   }
   if (!Notification.isSupported()) return;
   for (const lead of result.repliedLeads) {
+    // Odmowa to nie „gorący lead” — bez powiadomienia.
+    if (BLOCKING_REPLIES.has(lead.reply_category)) continue;
     try {
       const n = new Notification({
         title: "🔥 Nowy gorący lead!",
@@ -2432,6 +2447,40 @@ app.on("window-all-closed", () => {
 
 let autopilot;
 let emailEngine;
+let inbox;
+
+/** Jedna odpowiedź SMS do klienta, który już odpisał (zatwierdzona w skrzynce). */
+async function sendSmsReply(phone, body) {
+  if (!validatePolishMobile(phone).isValidMobile) throw new Error("Niepoprawny numer telefonu.");
+  const scriptPath = path.join(os.tmpdir(), "leadfinder-imessage.scpt");
+  fs.writeFileSync(scriptPath, APPLESCRIPT);
+  const res = await bulkLimiter.schedule(() => runScript(scriptPath, phone, body));
+  if (!res.ok) throw new Error(res.error || "Wiadomości nie wysłały SMS-a.");
+  return res;
+}
+
+const CATEGORY_ICON = { odmowa: "🚫", nieufnosc: "🚫", autoodpowiedz: "🤖", nie_teraz: "⏳", cena: "💰", zainteresowany: "🔥", pytanie: "❓", inne: "✉️" };
+const CATEGORY_NAME = { odmowa: "odmowa", nieufnosc: "nieufność", autoodpowiedz: "autoodpowiedź", nie_teraz: "nie teraz", cena: "pytanie o cenę", zainteresowany: "zainteresowany", pytanie: "pytanie", inne: "inne" };
+
+/** Powiadomienie o nowej odpowiedzi: okno aplikacji i Telegram ze szkicem oraz przyciskami decyzji. */
+function announceInboxMessage(m) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    try { if (!w.isDestroyed()) w.webContents.send("inbox:changed"); } catch {}
+  }
+  if (!autopilot?.notifyOwner || m.status === "ignored") return;
+  const who = m.leadName || m.address || "klient";
+  const head = `${CATEGORY_ICON[m.category] || "✉️"} ${who} (${m.channel === "email" ? "e-mail" : "SMS"}): ${CATEGORY_NAME[m.category] || m.category}`;
+  const quote = m.body ? `\n„${String(m.body).slice(0, 600)}”` : "\n(treść niedostępna — otwórz Wiadomości na Macu)";
+  if (m.status === "blocked") {
+    autopilot.notifyOwner(`${head}${quote}\n\nKontakt zablokowany. Nie dostanie kolejnej wiadomości.`);
+    return;
+  }
+  const buttons = [];
+  if (!m.needsEdit) buttons.push({ text: "✅ Wyślij", callback_data: `INBOX:ok:${m.id}` });
+  buttons.push({ text: "⏭ Pomiń", callback_data: `INBOX:no:${m.id}` }, { text: "🚫 Zablokuj", callback_data: `INBOX:bl:${m.id}` });
+  const draft = m.needsEdit ? "\n\nBrak gotowej odpowiedzi — napisz ją w aplikacji (Skrzynka)." : `\n\nPropozycja odpowiedzi${m.draftFromAi ? " (AI)" : ""}:\n${m.draft}`;
+  autopilot.notifyOwner(`${head}${quote}${draft}`, { inline_keyboard: [buttons] });
+}
 const localEvent = {sender: {send() {}, isDestroyed: () => true}};
 function initAutopilot() {
   const changed = () => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("autopilot:changed"); };
@@ -2442,6 +2491,7 @@ function initAutopilot() {
     encrypt:t=>{if(!safeStorage.isEncryptionAvailable())throw new Error("Szyfrowanie skrzynki niedostępne.");return safeStorage.encryptString(t).toString("base64");},
     decrypt:t=>safeStorage.decryptString(Buffer.from(t,"base64")),
     templates:()=>{try{return JSON.parse(readJson(PREFS_FILE(),{})["leadfinder.email-templates"]||"{}");}catch{return {};}},
+    onReply:r=>inbox?.ingest({channel:"email",lead:r.lead,address:r.from,text:r.text,at:r.at,externalId:r.uid,outbound:r.lead.email_exact_text||r.lead.email_prepared_body}),
     website:async (url,email)=>{
       const domain=email.split("@")[1];
       if(!url&&!['gmail.com','wp.pl','onet.pl','interia.pl','o2.pl','outlook.com','hotmail.com','yahoo.com'].includes(domain))url=`https://${domain}`;
@@ -2449,7 +2499,25 @@ function initAutopilot() {
       try{const audit=await auditWebsiteHealth(url);if(!audit.isTargetLead)return "HEALTHY";return /ssl/i.test(audit.issueTag||"")?"NO_SSL":/wygas|błąd/i.test(audit.issueTag||"")?"EXPIRED_OR_ERROR":"UNKNOWN";}catch{return "UNKNOWN";}
     },
   });
+  inbox = createInbox({
+    db: () => { const h = dataStore(); return h.state === "sqlite" ? h.store.db : null; },
+    read: (name, fallback) => readJson(dataFile(name), fallback),
+    write: (name, value) => writeJson(dataFile(name), value),
+    encrypt: t => { if (!safeStorage.isEncryptionAvailable()) throw new Error("Szyfrowanie klucza niedostępne."); return safeStorage.encryptString(t).toString("base64"); },
+    decrypt: t => safeStorage.decryptString(Buffer.from(t, "base64")),
+    fetchImpl: (url, init) => fetch(url, init),
+    block: ({ channel, address }) => {
+      if (channel === "email") { emailEngine.blacklist(address); return; }
+      const key = blacklistKey(address), c = blockDb();
+      if (key && c) c.prepare("INSERT OR IGNORE INTO blacklist (phone, added_at) VALUES (?, ?)").run(key, Date.now());
+    },
+    // Bez działającej bazy traktujemy każdy kontakt jak zablokowany (wysyłka wstrzymana).
+    isBlocked: ({ channel, address }) => { const h = dataStore(); return h.state !== "sqlite" || h.store.suppression.isBlocked(channel === "email" ? { email: address } : { phone: address }); },
+    send: ({ channel, leadId, address, body }) => channel === "email" ? emailEngine.reply(leadId, body) : sendSmsReply(address, body),
+    notify: announceInboxMessage,
+  });
   autopilot = createAutopilot({
+    inboxCallback: data => inbox.handleCallback(data),
     file: dataFile, read: readJson, write: writeJson, changed,
     leads: () => [...readLeads(), ...Object.keys(readJson(dataFile("sms-ledger.json"), {})).map(telefon => ({telefon, sms_reserved_at: true}))],
     blocked: () => {const c=blockDb(); return c ? c.prepare("SELECT phone FROM blacklist").all().map(r=>r.phone) : [];},
@@ -2532,6 +2600,16 @@ function initAutopilot() {
     },
   });
   const stop=autopilot.start(); app.on("before-quit",stop);
+}
+for (const name of ["list", "counts", "approve", "dismiss", "block", "settings", "configure", "testAi"]) {
+  ipcMain.handle(`inbox:${name}`, async (_e, ...args) => {
+    if (!inbox) throw new Error("Skrzynka odpowiedzi uruchamia się.");
+    const result = await inbox[name](...args);
+    if (["approve", "dismiss", "block"].includes(name)) {
+      for (const w of BrowserWindow.getAllWindows()) { try { if (!w.isDestroyed()) w.webContents.send("inbox:changed"); } catch {} }
+    }
+    return result;
+  });
 }
 for(const name of ["snapshot","configure","run","action","test","testReport","remoteReport"]) ipcMain.handle(`autopilot:${name}`,async (_e,...args)=>{
   if(!autopilot) throw new Error("Autopilot uruchamia się.");

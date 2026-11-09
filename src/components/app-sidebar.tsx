@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Mail, Clapperboard, Globe, Crosshair, Database, MessageSquare, Bot, ChartNoAxesCombined, Settings2, Radar, Smartphone, PanelsTopLeft, ArrowUpRight, CircleHelp } from 'lucide-react';
+import { Search, Mail, Inbox, Clapperboard, Globe, Crosshair, Database, MessageSquare, Bot, ChartNoAxesCombined, Settings2, Radar, Smartphone, PanelsTopLeft, ArrowUpRight, CircleHelp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getBridge, type BulkQueueStatus } from '@/lib/bulk-send';
 import { openDesktopWidget, widgetBridge } from '@/lib/widget-bridge';
@@ -12,13 +12,14 @@ export const APP_DESTINATIONS = [
   { id: 'base', label: 'Moja Baza', icon: Database },
   { id: 'message', label: 'Szablony & Wysyłka', icon: MessageSquare },
   { id: 'email', label: 'E-mail (USA)', icon: Mail },
+  { id: 'inbox', label: 'Odpowiedzi', icon: Inbox },
   { id: 'autopilot', label: 'Autopilot', icon: Bot },
   { id: 'analytics', label: 'Analityka', icon: ChartNoAxesCombined },
   { id: 'settings', label: 'Ustawienia & Widget', icon: Settings2 },
 ];
 
-export function AppSidebar({ active, onNavigate, hot }: {
-  active: string; onNavigate: (tab: string) => void; hot: number;
+export function AppSidebar({ active, onNavigate, hot, inboxPending = 0 }: {
+  active: string; onNavigate: (tab: string) => void; hot: number; inboxPending?: number;
 }) {
   const [queue, setQueue] = useState<BulkQueueStatus | null>(null);
   const { offer, setOffer } = useOfferSettings();
@@ -60,6 +61,7 @@ export function AppSidebar({ active, onNavigate, hot }: {
         {APP_DESTINATIONS.map(({ id, label, icon: Icon }) => <Button key={id} variant="ghost" aria-label={label} onClick={() => onNavigate(id)} aria-current={active === id ? 'page' : undefined} className={`sidebar-item ${active === id ? 'sidebar-item-active' : ''} ${id === 'sniper' ? 'border border-amber-400/30 bg-amber-400/10 text-amber-200 backdrop-blur-xl' : ''}`}>
           <Icon className="size-[18px]" /><span className="flex-1 text-left">{label}</span>
           {id === 'base' && hot > 0 && <span className="rounded-full bg-destructive/20 px-2 py-0.5 text-xs tabular-nums text-destructive">{hot}</span>}
+          {id === 'inbox' && inboxPending > 0 && <span className="rounded-full bg-primary/20 px-2 py-0.5 text-xs tabular-nums text-primary" aria-label={`${inboxPending} do decyzji`}>{inboxPending}</span>}
         </Button>)}
       </nav>
     </div>

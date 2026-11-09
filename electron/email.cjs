@@ -6,6 +6,7 @@ const {randomUUID} = require('crypto');
 const defaults = require('../email-defaults.json');
 const dns = require('dns').promises;
 const countryRules = require('../country-rules.json');
+const {stripQuoted, extractPlainText} = require('./reply-text.cjs');
 
 /** Reguły e-mail dla rynku wiersza; starsze wiersze bez pola to Polska. */
 const marketOf = l => (l && countryRules.markets[l.market] ? l.market : 'PL');
@@ -31,18 +32,6 @@ function inSendWindow(market, timeZone, date = new Date()) {
   const day = parts.find(p => p.type === 'weekday')?.value;
   if (w.weekdaysOnly && (day === 'Sat' || day === 'Sun')) return false;
   return hour >= w.startHour && hour < w.endHour;
-}
-
-/** Sama odpowiedź, bez cytowanej wiadomości — cytat zawiera naszą stopkę ze słowem rezygnacji. */
-function stripQuoted(text) {
-  const lines = String(text || '').replace(/\r/g, '').split('\n');
-  const out = [];
-  for (const line of lines) {
-    if (/^\s*>/.test(line)) continue;
-    if (/^\s*(On .{5,120} wrote:|W dniu .{5,120} napisał\(?a?\)?:|-{2,}\s*Original Message\s*-{2,}|-{2,}\s*Wiadomość oryginalna\s*-{2,}|From: .+|Od: .+|Sent from my .+)\s*$/i.test(line)) break;
-    out.push(line);
-  }
-  return out.join('\n').trim();
 }
 
 /** Odmowa albo nieufność w odpowiedzi — adres trafia na stałą listę blokad. */
@@ -157,19 +146,25 @@ function createEmailEngine(d) {
  async function syncReplies(){
   const s=d.read(configFile,{});if(!s.imapHost||!s.imapUser)throw new Error('Uzupełnij opcjonalny IMAP w ustawieniach.');
   const secret=s.encryptedImapPassword||s.encryptedPassword;if(!secret)throw new Error('Brak hasła IMAP.');
-  const client=new ImapFlow({host:s.imapHost,port:Number(s.imapPort||993),secure:true,auth:{user:s.imapUser,pass:d.decrypt(secret)},logger:false,connectionTimeout:15000});let updated=0,blockedCount=0;
+  const client=new ImapFlow({host:s.imapHost,port:Number(s.imapPort||993),secure:true,auth:{user:s.imapUser,pass:d.decrypt(secret)},logger:false,connectionTimeout:15000});let updated=0,blockedCount=0;const replies=[];
   try{await client.connect();const lock=await client.getMailboxLock('INBOX');try{
    const sent=list().filter(r=>r.email_sent_at);const since=new Date(Math.min(...sent.map(r=>Date.parse(r.email_sent_at)),Date.now()));
    const uids=await client.search({since},{uid:true});
    if(!uids?.length)return {updated,blocked:blockedCount};
    for await(const msg of client.fetch(uids.slice(-200),{envelope:true,bodyParts:['TEXT']},{uid:true})){
     const from=normalizeEmail(msg.envelope?.from?.[0]?.address);const lead=sent.find(l=>l.email===from&&new Date(msg.envelope.date)>new Date(l.email_sent_at));if(!lead)continue;
-    const text=msg.bodyParts?.get('TEXT')?.toString('utf8')||'';
+    const raw=msg.bodyParts?.get('TEXT')?.toString('utf8')||'';
+    // Część TEXT bywa wieloczęściowa albo zakodowana quoted-printable — wyciągamy czysty tekst.
+    const text=extractPlainText(raw,!/^--\S/m.test(raw)&&/=\r?\n|=[0-9A-F]{2}/.test(raw)?'quoted-printable':'');
     const reply=stripQuoted(text).slice(0,600);
+    replies.push({lead,from,text,at:new Date(msg.envelope.date).getTime(),uid:msg.uid});
     if(isRefusal(marketOf(lead),text)){db().prepare('INSERT OR IGNORE INTO email_blacklist VALUES (?,?)').run(from,Date.now());write(list().map(r=>r.id===lead.id?{...r,status:'zablokowany',email_reply_text:reply}:r));blockedCount++;}
     else if(!lead.engaged_at){write(list().map(r=>r.id===lead.id?{...r,status:'odpisal',engaged_at:new Date(msg.envelope.date).toISOString(),email_reply_text:reply}:r));updated++;}
    }
-  }finally{lock.release();}}finally{await client.logout().catch(()=>{});}return {updated,blocked:blockedCount};
+  }finally{lock.release();}}finally{await client.logout().catch(()=>{});}
+  // Skrzynka odpowiedzi klasyfikuje każdą wiadomość i przygotowuje szkic; błąd skrzynki nie psuje synchronizacji.
+  for(const r of replies){try{await d.onReply?.(r);}catch(e){queue.error=String(e.message||e);}}
+  return {updated,blocked:blockedCount,replies:replies.length};
  }
  async function harvest(params,progress=()=>{}) {
   const niche=String(params.niche||'').trim(),area=String(params.area||'').trim(),limit=Math.min(100,Math.max(1,Number(params.limit)||30));if(!niche||!area)throw new Error('Wpisz niszę i obszar.');
@@ -211,7 +206,22 @@ function createEmailEngine(d) {
   }
   const leads=dedupeEmail(rows,list(),blocked()).slice(0,limit);progress({phase:'done',name:'Gotowe',found:leads.length});return {leads,warnings};
  }
+ /** Odpowiedź w wątku na wiadomość klienta (po zatwierdzeniu w skrzynce). Blokada jest sprawdzana tuż przed wysyłką. */
+ async function reply(id,body){
+  const l=list().find(r=>r.id===id),email=normalizeEmail(l?.email),text=String(body||'').trim();
+  if(!l||!email)throw new Error('Nie ma takiego kontaktu e-mail.');
+  if(!text)throw new Error('Pusta odpowiedź.');
+  if(blocked().includes(email))throw new Error('Adres jest na liście blokad.');
+  const {s,t}=transport(),market=marketOf(l);
+  try{
+   const subject=`Re: ${String(l.email_subject_used||l.email_prepared_subject||l.nazwa||'').replace(/^(re:\s*)+/i,'').replace(/[\r\n]+/g,' ')}`;
+   const result=await t.sendMail({from:{name:s.senderName||s.company,address:s.from},to:email,subject,text:`${text}\n\n--\n${buildFooter(market,s)}`,headers:{'List-Unsubscribe':`<mailto:${s.from}?subject=${encodeURIComponent(emailRules(market).unsubscribeSubject)}>`},...(l.email_message_id?{inReplyTo:l.email_message_id,references:l.email_message_id}:{})});
+   if(!result.accepted?.some(a=>normalizeEmail(a)===email))throw new Error('Serwer SMTP nie zaakceptował odbiorcy.');
+   write(list().map(r=>r.id===id?{...r,email_last_reply_at:new Date().toISOString()}:r));
+   return {messageId:result.messageId};
+  }finally{t.close();}
+ }
  const checkDomain=(domain,selector)=>checkSenderDomain(domain||String(d.read(configFile,{}).from||''),selector||d.read(configFile,{}).dkimSelector,d.dns||dns);
- return {checkDomain,list,insert,update,remove:id=>write(list().filter(r=>r.id!==id)),settings,configure,harvest,sendBulk,test,syncReplies,build,blocked,blacklist:email=>{const e=normalizeEmail(email);if(!e)throw new Error('Niepoprawny e-mail.');db().prepare('INSERT OR IGNORE INTO email_blacklist VALUES (?,?)').run(e,Date.now());write(list().map(l=>l.email===e?{...l,status:'zablokowany'}:l));},status:()=>({...queue}),control:command=>{if(command==='pause')queue.paused=true;else if(command==='resume')queue.paused=false;else if(command==='cancel')queue.cancel=true;notify();return {...queue};}};
+ return {reply,checkDomain,list,insert,update,remove:id=>write(list().filter(r=>r.id!==id)),settings,configure,harvest,sendBulk,test,syncReplies,build,blocked,blacklist:email=>{const e=normalizeEmail(email);if(!e)throw new Error('Niepoprawny e-mail.');db().prepare('INSERT OR IGNORE INTO email_blacklist VALUES (?,?)').run(e,Date.now());write(list().map(l=>l.email===e?{...l,status:'zablokowany'}:l));},status:()=>({...queue}),control:command=>{if(command==='pause')queue.paused=true;else if(command==='resume')queue.paused=false;else if(command==='cancel')queue.cancel=true;notify();return {...queue};}};
 }
 module.exports={buildFooter,inSendWindow,stripQuoted,isRefusal,checkSenderDomain,createEmailEngine,normalizeEmail,domainType,extractEmails,spin,dedupeEmail,templateType};
