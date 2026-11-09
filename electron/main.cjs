@@ -1,12 +1,14 @@
 // LeadFinder B2B — proces główny Electron (macOS)
 // Aplikacja działa w pełni lokalnie: interfejs z folderu dist/client,
 // dane w plikach JSON na dysku, zapytania do Google Places bezpośrednio z komputera.
-const { app, BrowserWindow, ipcMain, Menu, Notification, powerSaveBlocker, safeStorage, screen, nativeTheme } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, Notification, powerSaveBlocker, safeStorage, screen, shell, nativeTheme } = require("electron");
 const { secondaryDisplay, animateWindowToSecondaryDisplay } = require("./window-motion.cjs");
 const { createAutopilot } = require("./autopilot.cjs");
 const { createEmailEngine } = require("./email.cjs");
 const { collectOffers, offerDetail } = require("./olx-results.cjs");
 const { createSniperScanner } = require("./sniper-audit.cjs");
+const { openStoreSafely, LEAD_FILES, LEDGER_FILES } = require("./store.cjs");
+const { createInbox, classifyRules, BLOCKING: BLOCKING_REPLIES } = require("./inbox.cjs");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -59,7 +61,34 @@ function dataFile(name) {
   return path.join(app.getPath("userData"), name);
 }
 
+// Baza SQLite (electron/store.cjs) przejmuje leady, rejestry wysyłek i listy blokad.
+// Otwierana leniwie przy pierwszym odczycie danych; przy pierwszym uruchomieniu
+// przenosi dane z plików JSON (z kopią zapasową).
+let storeHandle = null;
+function dataStore() {
+  if (!storeHandle) {
+    storeHandle = openStoreSafely({ dir: app.getPath("userData") });
+    if (storeHandle.state === "sqlite" && storeHandle.migration?.migrated) {
+      console.log("Dane przeniesione do bazy SQLite:", JSON.stringify(storeHandle.migration.counts));
+    }
+  }
+  return storeHandle;
+}
+const STORE_BROKEN_MESSAGE =
+  "Baza danych LeadFinder jest niedostępna. Zamknij aplikację i uruchom ją ponownie; jeśli błąd wraca, przywróć kopię z folderu „backups”. Wysyłka jest wstrzymana, żeby nikt nie dostał wiadomości dwa razy.";
+
+/** Czy ten plik jest obsługiwany przez bazę. W stanie „broken” rzuca błąd zamiast wracać do starych plików. */
+function storeFor(file) {
+  const name = path.basename(String(file));
+  if (!(name in LEAD_FILES) && !(name in LEDGER_FILES)) return null;
+  const handle = dataStore();
+  if (handle.state === "broken") throw new Error(`${STORE_BROKEN_MESSAGE} (${handle.error})`);
+  return handle.state === "sqlite" ? handle.store : null;
+}
+
 function readJson(file, fallback) {
+  const store = storeFor(file);
+  if (store) return store.readFile(file);
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"));
   } catch {
@@ -68,6 +97,8 @@ function readJson(file, fallback) {
 }
 
 function writeJson(file, value) {
+  const store = storeFor(file);
+  if (store) return store.writeFile(file, value);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(value, null, 2), "utf8");
 }
@@ -75,6 +106,29 @@ function writeJson(file, value) {
 const readSettings = () => ({ googleApiKey: "", ceidgApiKey: "", ...readJson(dataFile("settings.json"), {}) });
 const readLeads = () => readJson(dataFile("leads.json"), []);
 const writeLeads = (rows) => writeJson(dataFile("leads.json"), rows);
+
+// Stan bazy danych dla widoku Ustawień.
+ipcMain.handle("store:status", () => {
+  const handle = dataStore();
+  if (handle.state !== "sqlite") return { engine: handle.state, error: handle.error ?? null };
+  return { ...handle.store.status(), error: null };
+});
+ipcMain.handle("store:backup", () => {
+  const handle = dataStore();
+  if (handle.state !== "sqlite") throw new Error("Kopia zapasowa wymaga działającej bazy danych.");
+  const file = handle.store.backup();
+  return { file, ...handle.store.status() };
+});
+ipcMain.handle("store:openBackups", () => {
+  const dir = path.join(app.getPath("userData"), "backups");
+  fs.mkdirSync(dir, { recursive: true });
+  return shell.openPath(dir);
+});
+ipcMain.handle("store:events", (_e, kind, id) => {
+  const handle = dataStore();
+  if (handle.state !== "sqlite") return [];
+  return id ? handle.store.events.forLead(kind === "email" ? "email" : "sms", String(id)) : handle.store.events.recent(100);
+});
 
 ipcMain.handle("settings:get", () => readSettings());
 ipcMain.handle("settings:set", (_e, value) => {
@@ -189,6 +243,18 @@ function cacheDb() {
     console.warn("Pamięć podręczna wyłączona (brak dostępu do pliku bazy):", String(err?.message || err));
   }
   return db;
+}
+
+/**
+ * Połączenie z listami blokad („blacklist”, „email_blacklist”). Po migracji to
+ * widoki na wspólną tabelę suppression w głównej bazie; bez bazy zostaje stary
+ * plik cache. W stanie „broken” zwraca null — brak listy blokad wstrzymuje wysyłkę.
+ */
+function blockDb() {
+  const handle = dataStore();
+  if (handle.state === "sqlite") return handle.store.db;
+  if (handle.state === "broken") return null;
+  return cacheDb();
 }
 
 function cacheRead(key) {
@@ -961,12 +1027,14 @@ async function searchOlx(e, payload) {
   const voivodeship = String(payload?.voivodeship ?? "").trim();
   const maxResults = Math.min(Math.max(Math.floor(Number(payload?.maxResults) || 50), 5), 50);
   const checkDDG = payload?.checkDuckDuckGo === true;
+  // Snajper „Reklamy wideo”: firmy z własną stroną są pożądane, więc ich nie odrzucamy.
+  const keepOwnSite = payload?.keepOwnSite === true;
   if (!query) return { ok: false, error: "Brak frazy wyszukiwania." };
   const sendProgress = (data) => { try { e.sender.send("olx-progress", data); } catch {} };
 
   const blacklist = new Set();
   try {
-    const conn = cacheDb();
+    const conn = blockDb();
     if (conn) for (const r of conn.prepare("SELECT phone FROM blacklist").all()) blacklist.add(blacklistKey(r.phone));
   } catch {
     /* brak czarnej listy nie blokuje skanu */
@@ -1033,7 +1101,7 @@ async function searchOlx(e, payload) {
 
     // Własna strona www w opisie -> odrzucamy (ma już stronę).
     const links = olxLinksInDescription(description);
-    if (links.ownSite) { skippedSite++; continue; }
+    if (links.ownSite && !keepOwnSite) { skippedSite++; continue; }
 
     // Numer wprost z opisu — natychmiastowy lead, bez klikania.
     let phone = findMobileInText(description, "");
@@ -1060,7 +1128,7 @@ async function searchOlx(e, payload) {
     if (!key || blacklist.has(key) || seenPhones.has(key)) continue;
 
     // Opcjonalny double-check w DuckDuckGo.
-    if (checkDDG) {
+    if (checkDDG && !keepOwnSite) {
       await sleep(800 + Math.random() * 800);
       if (await olxDdgHasSite(title, loc)) { skippedSite++; continue; }
     }
@@ -1077,6 +1145,7 @@ async function searchOlx(e, payload) {
       zrodlo: "OLX",
       zrodlo_telefonu: phoneSource,
       socialOnly: links.socialOnly,
+      website: links.ownSite || null,
       // Snajper: wyróżnienie/promowanie ogłoszenia i imię osoby kontaktowej.
       isPromoted: Boolean(
         fullOffer?.promotion?.highlighted ||
@@ -1189,6 +1258,7 @@ const sniperScanner = createSniperScanner({
   searchCeidg,
   hasCeidgKey: () => Boolean(String(readSettings().ceidgApiKey ?? "").trim()),
   validatePolishMobile,
+  validateEmail: validateEmailDeep,
   suggestDomains,
   checkDomainAvailability,
   fetchImpl: (url, init) => fetch(url, init),
@@ -1621,10 +1691,11 @@ function checkRepliesNow() {
   if (!conn) return { ok: false, checked: 0, updated: 0, repliedLeads: [], error: chatDbError ?? "Brak dostępu do chat.db" };
   let checked = 0;
   const repliedLeads = [];
+  const replies = [];
   try {
     const all = readLeads();
     const stmt = conn.prepare(
-      `SELECT m.ROWID,
+      `SELECT m.ROWID AS rowid, m.text AS text,
          (CASE WHEN m.date > 100000000000 THEN m.date / 1000000000 ELSE m.date END) AS sec
        FROM message m JOIN handle h ON m.handle_id = h.ROWID
        WHERE h.id LIKE ? AND m.is_from_me = 0
@@ -1648,6 +1719,11 @@ function checkRepliesNow() {
           // Atrybucja: pierwsza odpowiedź klienta = moment zaangażowania.
           if (!lead.engaged_at) lead.engaged_at = lead.replied_at;
           lead.status_changed_at = now;
+          // Treść odpowiedzi dla skrzynki; pusta, gdy macOS trzyma ją tylko w formacie binarnym.
+          const text = typeof row.text === "string" ? row.text : "";
+          const verdict = classifyRules(text);
+          lead.reply_category = verdict.category;
+          replies.push({ lead: { ...lead }, text, rowid: row.rowid, at: Date.parse(lead.replied_at) });
           repliedLeads.push(lead);
         }
       } catch (err) {
@@ -1655,9 +1731,9 @@ function checkRepliesNow() {
       }
     }
     if (repliedLeads.length > 0) writeLeads(all);
-    return { ok: true, checked, updated: repliedLeads.length, repliedLeads };
+    return { ok: true, checked, updated: repliedLeads.length, repliedLeads, replies };
   } catch (err) {
-    return { ok: false, checked, updated: repliedLeads.length, repliedLeads, error: String(err?.message || err) };
+    return { ok: false, checked, updated: repliedLeads.length, repliedLeads, replies, error: String(err?.message || err) };
   } finally {
     closeChatDb(conn);
   }
@@ -1702,7 +1778,7 @@ function checkDeliveryNow(existingConn) {
     }
     if (failed.length) {
       writeLeads(all);
-      const bl = cacheDb();
+      const bl = blockDb();
       for (const lead of failed) {
         const key = blacklistKey(lead.telefon);
         if (bl && key) {
@@ -1746,11 +1822,19 @@ function guardDeliveryStreak() {
 
 function notifyReplies(result) {
   if (!result.ok || !result.repliedLeads.length) return;
+  // Każda odpowiedź SMS trafia do skrzynki: odmowy są blokowane, reszta dostaje szkic do zatwierdzenia.
+  for (const r of result.replies ?? []) {
+    inbox
+      ?.ingest({ channel: "sms", lead: r.lead, address: r.lead.telefon, text: r.text, at: r.at, externalId: r.rowid, outbound: r.lead.sms_exact_text })
+      .catch((err) => console.warn("Skrzynka odpowiedzi:", String(err?.message || err)));
+  }
   for (const w of BrowserWindow.getAllWindows()) {
     try { w.webContents.send("leads:changed"); } catch {}
   }
   if (!Notification.isSupported()) return;
   for (const lead of result.repliedLeads) {
+    // Odmowa to nie „gorący lead” — bez powiadomienia.
+    if (BLOCKING_REPLIES.has(lead.reply_category)) continue;
     try {
       const n = new Notification({
         title: "🔥 Nowy gorący lead!",
@@ -1807,7 +1891,7 @@ function blacklistKey(phone) {
 ipcMain.handle("blacklist:add", (_e, phone) => {
   const key = blacklistKey(phone);
   if (!key) return { ok: false, error: "Nieprawidłowy numer" };
-  const conn = cacheDb();
+  const conn = blockDb();
   if (!conn) return { ok: false, error: "Baza czarnej listy niedostępna" };
   try {
     conn.prepare("INSERT OR IGNORE INTO blacklist (phone, added_at) VALUES (?, ?)").run(key, Date.now());
@@ -1817,7 +1901,7 @@ ipcMain.handle("blacklist:add", (_e, phone) => {
   }
 });
 ipcMain.handle("blacklist:getAll", () => {
-  const conn = cacheDb();
+  const conn = blockDb();
   if (!conn) return [];
   try {
     return conn.prepare("SELECT phone FROM blacklist").all().map((r) => String(r.phone));
@@ -2004,6 +2088,16 @@ async function sendBulk(event, items, options) {
         const freshHistory = historyHasPhone(chatDb, item.phone);
         if (freshHistory !== false) {
           results.push({id:item.id,ok:false,skipped:true,reason:"history",error:"Numer w historii lub historia niedostępna"});
+          continue;
+        }
+        // Wspólna lista blokad: rezygnacja zgłoszona dowolnym kanałem (SMS lub e-mail) wstrzymuje wysyłkę.
+        const blocks = blockDb();
+        if (!blocks) {
+          results.push({id:item.id,ok:false,skipped:true,reason:"blocked",error:"Lista blokad niedostępna — wysyłka wstrzymana"});
+          continue;
+        }
+        if (blocks.prepare("SELECT 1 AS hit FROM blacklist WHERE phone = ?").get(blacklistKey(item.phone))) {
+          results.push({id:item.id,ok:false,skipped:true,reason:"blocked",error:"Numer jest na liście blokad"});
           continue;
         }
         // Persist the one-attempt reservation before invoking macOS, surviving a crash.
@@ -2331,6 +2425,13 @@ ipcMain.handle("widget:openMain", async () => {
 });
 
 app.whenReady().then(() => {
+  // Otwarcie bazy (z jednorazową migracją) i codzienna kopia zapasowa.
+  try {
+    const handle = dataStore();
+    if (handle.state === "sqlite") handle.store.backupIfDue();
+  } catch (err) {
+    console.warn("Kopia zapasowa bazy nie powiodła się:", String(err?.message || err));
+  }
   buildAppMenu();
   createWindow();
   startBackgroundReplyMonitor();
@@ -2346,16 +2447,51 @@ app.on("window-all-closed", () => {
 
 let autopilot;
 let emailEngine;
+let inbox;
+
+/** Jedna odpowiedź SMS do klienta, który już odpisał (zatwierdzona w skrzynce). */
+async function sendSmsReply(phone, body) {
+  if (!validatePolishMobile(phone).isValidMobile) throw new Error("Niepoprawny numer telefonu.");
+  const scriptPath = path.join(os.tmpdir(), "leadfinder-imessage.scpt");
+  fs.writeFileSync(scriptPath, APPLESCRIPT);
+  const res = await bulkLimiter.schedule(() => runScript(scriptPath, phone, body));
+  if (!res.ok) throw new Error(res.error || "Wiadomości nie wysłały SMS-a.");
+  return res;
+}
+
+const CATEGORY_ICON = { odmowa: "🚫", nieufnosc: "🚫", autoodpowiedz: "🤖", nie_teraz: "⏳", cena: "💰", zainteresowany: "🔥", pytanie: "❓", inne: "✉️" };
+const CATEGORY_NAME = { odmowa: "odmowa", nieufnosc: "nieufność", autoodpowiedz: "autoodpowiedź", nie_teraz: "nie teraz", cena: "pytanie o cenę", zainteresowany: "zainteresowany", pytanie: "pytanie", inne: "inne" };
+
+/** Powiadomienie o nowej odpowiedzi: okno aplikacji i Telegram ze szkicem oraz przyciskami decyzji. */
+function announceInboxMessage(m) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    try { if (!w.isDestroyed()) w.webContents.send("inbox:changed"); } catch {}
+  }
+  if (!autopilot?.notifyOwner || m.status === "ignored") return;
+  const who = m.leadName || m.address || "klient";
+  const head = `${CATEGORY_ICON[m.category] || "✉️"} ${who} (${m.channel === "email" ? "e-mail" : "SMS"}): ${CATEGORY_NAME[m.category] || m.category}`;
+  const quote = m.body ? `\n„${String(m.body).slice(0, 600)}”` : "\n(treść niedostępna — otwórz Wiadomości na Macu)";
+  if (m.status === "blocked") {
+    autopilot.notifyOwner(`${head}${quote}\n\nKontakt zablokowany. Nie dostanie kolejnej wiadomości.`);
+    return;
+  }
+  const buttons = [];
+  if (!m.needsEdit) buttons.push({ text: "✅ Wyślij", callback_data: `INBOX:ok:${m.id}` });
+  buttons.push({ text: "⏭ Pomiń", callback_data: `INBOX:no:${m.id}` }, { text: "🚫 Zablokuj", callback_data: `INBOX:bl:${m.id}` });
+  const draft = m.needsEdit ? "\n\nBrak gotowej odpowiedzi — napisz ją w aplikacji (Skrzynka)." : `\n\nPropozycja odpowiedzi${m.draftFromAi ? " (AI)" : ""}:\n${m.draft}`;
+  autopilot.notifyOwner(`${head}${quote}${draft}`, { inline_keyboard: [buttons] });
+}
 const localEvent = {sender: {send() {}, isDestroyed: () => true}};
 function initAutopilot() {
   const changed = () => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("autopilot:changed"); };
   emailEngine = createEmailEngine({
-    file:dataFile,read:readJson,write:writeJson,db:cacheDb,sleep,fetch:harvestFetch,
+    file:dataFile,read:readJson,write:writeJson,db:blockDb,sleep,fetch:harvestFetch,
     ceidg:ceidgGet,ceidgBase:CEIDG_BASE,ceidgKey:()=>readSettings().ceidgApiKey,
     changed:()=>{for(const w of BrowserWindow.getAllWindows())if(!w.isDestroyed())w.webContents.send("email:changed");},
     encrypt:t=>{if(!safeStorage.isEncryptionAvailable())throw new Error("Szyfrowanie skrzynki niedostępne.");return safeStorage.encryptString(t).toString("base64");},
     decrypt:t=>safeStorage.decryptString(Buffer.from(t,"base64")),
     templates:()=>{try{return JSON.parse(readJson(PREFS_FILE(),{})["leadfinder.email-templates"]||"{}");}catch{return {};}},
+    onReply:r=>inbox?.ingest({channel:"email",lead:r.lead,address:r.from,text:r.text,at:r.at,externalId:r.uid,outbound:r.lead.email_exact_text||r.lead.email_prepared_body}),
     website:async (url,email)=>{
       const domain=email.split("@")[1];
       if(!url&&!['gmail.com','wp.pl','onet.pl','interia.pl','o2.pl','outlook.com','hotmail.com','yahoo.com'].includes(domain))url=`https://${domain}`;
@@ -2363,10 +2499,28 @@ function initAutopilot() {
       try{const audit=await auditWebsiteHealth(url);if(!audit.isTargetLead)return "HEALTHY";return /ssl/i.test(audit.issueTag||"")?"NO_SSL":/wygas|błąd/i.test(audit.issueTag||"")?"EXPIRED_OR_ERROR":"UNKNOWN";}catch{return "UNKNOWN";}
     },
   });
+  inbox = createInbox({
+    db: () => { const h = dataStore(); return h.state === "sqlite" ? h.store.db : null; },
+    read: (name, fallback) => readJson(dataFile(name), fallback),
+    write: (name, value) => writeJson(dataFile(name), value),
+    encrypt: t => { if (!safeStorage.isEncryptionAvailable()) throw new Error("Szyfrowanie klucza niedostępne."); return safeStorage.encryptString(t).toString("base64"); },
+    decrypt: t => safeStorage.decryptString(Buffer.from(t, "base64")),
+    fetchImpl: (url, init) => fetch(url, init),
+    block: ({ channel, address }) => {
+      if (channel === "email") { emailEngine.blacklist(address); return; }
+      const key = blacklistKey(address), c = blockDb();
+      if (key && c) c.prepare("INSERT OR IGNORE INTO blacklist (phone, added_at) VALUES (?, ?)").run(key, Date.now());
+    },
+    // Bez działającej bazy traktujemy każdy kontakt jak zablokowany (wysyłka wstrzymana).
+    isBlocked: ({ channel, address }) => { const h = dataStore(); return h.state !== "sqlite" || h.store.suppression.isBlocked(channel === "email" ? { email: address } : { phone: address }); },
+    send: ({ channel, leadId, address, body }) => channel === "email" ? emailEngine.reply(leadId, body) : sendSmsReply(address, body),
+    notify: announceInboxMessage,
+  });
   autopilot = createAutopilot({
+    inboxCallback: data => inbox.handleCallback(data),
     file: dataFile, read: readJson, write: writeJson, changed,
     leads: () => [...readLeads(), ...Object.keys(readJson(dataFile("sms-ledger.json"), {})).map(telefon => ({telefon, sms_reserved_at: true}))],
-    blocked: () => {const c=cacheDb(); return c ? c.prepare("SELECT phone FROM blacklist").all().map(r=>r.phone) : [];},
+    blocked: () => {const c=blockDb(); return c ? c.prepare("SELECT phone FROM blacklist").all().map(r=>r.phone) : [];},
     validPhone: p => validatePolishMobile(p).isValidMobile,
     email:emailEngine,
     openHistory: openChatDb, closeHistory: closeChatDb, history: historyHasPhone,
@@ -2447,11 +2601,21 @@ function initAutopilot() {
   });
   const stop=autopilot.start(); app.on("before-quit",stop);
 }
+for (const name of ["list", "counts", "approve", "dismiss", "block", "settings", "configure", "testAi"]) {
+  ipcMain.handle(`inbox:${name}`, async (_e, ...args) => {
+    if (!inbox) throw new Error("Skrzynka odpowiedzi uruchamia się.");
+    const result = await inbox[name](...args);
+    if (["approve", "dismiss", "block"].includes(name)) {
+      for (const w of BrowserWindow.getAllWindows()) { try { if (!w.isDestroyed()) w.webContents.send("inbox:changed"); } catch {} }
+    }
+    return result;
+  });
+}
 for(const name of ["snapshot","configure","run","action","test","testReport","remoteReport"]) ipcMain.handle(`autopilot:${name}`,async (_e,...args)=>{
   if(!autopilot) throw new Error("Autopilot uruchamia się.");
   return autopilot[name](...args);
 });
-for(const name of ["list","insert","update","remove","blacklist","settings","configure","test","syncReplies","status","control"])ipcMain.handle(`email:${name}`,async (_e,...args)=>{if(!emailEngine)throw new Error("Moduł e-mail uruchamia się.");return emailEngine[name](...args);});
+for(const name of ["list","insert","update","remove","blacklist","blocked","checkDomain","settings","configure","test","syncReplies","status","control"])ipcMain.handle(`email:${name}`,async (_e,...args)=>{if(!emailEngine)throw new Error("Moduł e-mail uruchamia się.");return emailEngine[name](...args);});
 // sendBulk z głęboką walidacją MX przed pierwszą próbą SMTP — odrzuca adresy
 // z nieistniejącymi domenami, żeby chronić konto przed Hard Bounce.
 ipcMain.handle("email:sendBulk",async (event,ids,consent)=>{

@@ -3,12 +3,18 @@ import type { SniperRawLead, TechAuditResult } from "../leads-store";
 import {
   generateSimulatedRawLeads,
   isCorporateName,
+  offerMessageForRow,
   runFiveStageSieve,
   sniperLeadToRow,
   sniperMessageFor,
   toPolishVocative,
 } from "../sniper-sieve";
 import { smsSegments, spinSpintaxSeeded } from "../message-template";
+import {
+  buildUsEmail,
+  generateSimulatedUsLeads,
+  isRefusal,
+} from "../market-outreach";
 
 const NOW = new Date("2026-11-02T12:00:00Z");
 
@@ -405,5 +411,236 @@ describe("szablony Snajpera", () => {
     expect(row["website_issue_type"]).toBe("NO_SSL");
     expect(row["status"]).toBe("nowy");
     expect(row["hot_score"]).toBe(res.top[0]!.hot_score);
+  });
+});
+
+describe("oferta: reklamy wideo AI", () => {
+  const video = { now: NOW, offer: "video_ads" as const, minScoreThreshold: 0 };
+
+  it("nie odrzuca nowoczesnej strony, a piksel reklamowy daje +30", () => {
+    const res = runFiveStageSieve(
+      [
+        raw({
+          website: "https://nowak.pl",
+          tech_audit: audit({ hasAdPixels: true }),
+        }),
+      ],
+      video,
+    );
+    const lead = res.top[0]!;
+    expect(lead.offer).toBe("video_ads");
+    expect(lead.intent_category).toBe("VIDEO_ACTIVE_ADVERTISER");
+    expect(lead.score_reasons).toContain(
+      "🎯 Piksel reklamowy Meta/Google Ads — firma inwestuje w reklamy (+30)",
+    );
+    expect(lead.score_reasons).toContain(
+      "✅ Sprawna strona — reklama ma dokąd kierować (+10)",
+    );
+    expect(lead.suggested_free_domain).toBeNull();
+  });
+
+  it("niedziałająca strona trafia do oferty WWW, a brak budżetu odpada", () => {
+    const broken = runFiveStageSieve(
+      [
+        raw({
+          website: "https://nowak.pl",
+          tech_audit: audit({ httpStatus: 500 }),
+        }),
+      ],
+      video,
+    );
+    expect(broken.rejected[0]!.rejection_reason).toMatch(
+      /lepszy kandydat na ofertę „Strony WWW”/,
+    );
+    const noBudget = runFiveStageSieve(
+      [raw({ reviews: 6, rating: 4.9 })],
+      video,
+    );
+    expect(noBudget.rejected[0]!.rejection_reason).toMatch(
+      /^Brak sygnałów budżetu/,
+    );
+  });
+
+  it("dopuszcza większe firmy niż oferta WWW (do 400 opinii)", () => {
+    const lead = raw({ reviews: 250, rating: 4.7 });
+    expect(
+      runFiveStageSieve([lead], { now: NOW, minScoreThreshold: 0 }).top,
+    ).toHaveLength(0);
+    expect(runFiveStageSieve([lead], video).top[0]!.intent_category).toBe(
+      "VIDEO_REVIEW_LEADER",
+    );
+  });
+
+  it("branża wizualna i high-ticket dokładają punkty, gdy bramka jest włączona", () => {
+    const base = raw({ reviews: 40, rating: 4.8 });
+    const on = runFiveStageSieve([base], {
+      ...video,
+      visualNiche: true,
+      highTicket: true,
+    });
+    const off = runFiveStageSieve([base], {
+      ...video,
+      visualNiche: true,
+      highTicket: true,
+      gates: { visualNiche: false },
+    });
+    expect(on.top[0]!.hot_score - off.top[0]!.hot_score).toBe(30);
+  });
+
+  it("zapisuje typ oferty i buduje SMS o reklamie wideo z ceną", () => {
+    const res = runFiveStageSieve(
+      [
+        raw({
+          source: "OLX",
+          owner_name: "Tomasz",
+          is_promoted_ad: true,
+          reviews: 0,
+          rating: null,
+        }),
+      ],
+      { ...video, nicheLabel: "Wrapping & Folie PPF" },
+    );
+    const lead = res.top[0]!;
+    const row = sniperLeadToRow(lead, "świętokrzyskie", NOW.toISOString());
+    expect(row["offer_type"]).toBe("video_ads");
+    expect(row["website_issue_type"]).toBeNull();
+    const msg = sniperMessageFor(lead, { price: "3 wersje reklamy za 990 zł" });
+    expect(msg.body).toMatch(
+      /^(Dzień dobry|Witam), Panie Tomaszu, trafiłem na Pana wyróżnione ogłoszenie na OLX \(wrapping i folie ppf, Kielce\)/,
+    );
+    expect(msg.body).toContain("(3 wersje reklamy za 990 zł)");
+    expect(msg.body).toContain("Pana pracę");
+    expect(msg.body).not.toMatch(/[{}|]/);
+    expect(msg.body).not.toContain("domena");
+    expect(msg.templateId).toBe("🎬 Wideo · Promowane OLX");
+  });
+
+  it("pusta cena usuwa nawias, a wiersz z bazy dostaje ten sam szablon", () => {
+    const res = runFiveStageSieve([raw({ reviews: 40, rating: 4.8 })], video);
+    const lead = res.top[0]!;
+    expect(sniperMessageFor(lead, { price: "" }).body).not.toContain("()");
+    const row = {
+      ...(sniperLeadToRow(lead, null, NOW.toISOString()) as Record<
+        string,
+        unknown
+      >),
+      id: lead.id,
+      created_at: NOW.toISOString(),
+    };
+    const fromRow = offerMessageForRow(row as never);
+    expect(fromRow.body).toBe(sniperMessageFor(lead).body);
+    const legacy = offerMessageForRow({
+      ...(row as object),
+      offer_type: "video_ads",
+      intent_category: null,
+    } as never);
+    expect(legacy.templateId).toBe("🎬 Wideo · Branża wizualna");
+  });
+});
+
+describe("rynek USA: kanał e-mail", () => {
+  const us = {
+    now: NOW,
+    channel: "email" as const,
+    market: "US" as const,
+    minScoreThreshold: 0,
+  };
+  const usRaw = (patch: Partial<SniperRawLead> = {}) =>
+    raw({
+      nazwa: "Miller Roofing",
+      telefon: "+19185550123",
+      miasto: "Tulsa, OK",
+      email: "info@millerroofing.com",
+      website: "http://millerroofing.com",
+      tech_audit: audit({ hasSsl: false, copyrightYear: 2014 }),
+      whois_free_domain: null,
+      ...patch,
+    });
+
+  it("kwalifikuje po adresie e-mail, a amerykański numer nie przeszkadza", () => {
+    const res = runFiveStageSieve([usRaw()], us);
+    const lead = res.top[0]!;
+    expect(lead.channel).toBe("email");
+    expect(lead.market).toBe("US");
+    expect(lead.intent_category).toBe("OUTDATED_NO_SSL_MOBILE");
+    // Ten sam rekord w kanale SMS odpada na polskim numerze komórkowym.
+    expect(
+      runFiveStageSieve([usRaw()], { now: NOW, minScoreThreshold: 0 }).top,
+    ).toHaveLength(0);
+  });
+
+  it("odrzuca brak e-maila, rezygnacje, duplikaty i sieciówki", () => {
+    const reason = (lead: SniperRawLead, extra = {}) =>
+      runFiveStageSieve([lead], { ...us, ...extra }).rejected[0]
+        ?.rejection_reason;
+    expect(reason(usRaw({ email: null }))).toBe(
+      "Brak publicznego adresu e-mail",
+    );
+    expect(
+      reason(usRaw(), { blacklistEmails: ["INFO@millerroofing.com"] }),
+    ).toBe("Adres na liście rezygnacji");
+    expect(
+      reason(usRaw(), { existingEmails: ["info@millerroofing.com"] }),
+    ).toBe("Adres jest już w bazie e-mail");
+    expect(reason(usRaw({ nazwa: "Roofing Corp" }))).toBe(
+      "Zbyt duża firma (ryzyko sekretariatu/call center)",
+    );
+    const dup = runFiveStageSieve([usRaw({ id: "a" }), usRaw({ id: "b" })], us);
+    expect(dup.rejected[0]!.rejection_reason).toBe(
+      "Duplikat adresu w tej paczce",
+    );
+  });
+
+  it("buduje e-mail po angielsku tylko ze sprawdzonych faktów", () => {
+    const lead = runFiveStageSieve([usRaw()], us).top[0]!;
+    const mail = buildUsEmail(lead, { trade: "roofing", senderName: "Michal" });
+    expect(mail.subject).toMatch(/Miller Roofing website$/);
+    expect(mail.body).toContain(
+      'browsers mark it as "Not Secure" because there is no SSL certificate',
+    );
+    expect(mail.body).toContain(
+      "Your Google reviews are great (42 reviews, 4.8 stars)",
+    );
+    expect(mail.body).toContain("(fixed price from $1,500)");
+    expect(mail.body.endsWith("Best,\nMichal")).toBe(true);
+    expect(mail.body).not.toMatch(/[{}|]/);
+    expect(buildUsEmail(lead, { trade: "roofing" }).body).toBe(
+      buildUsEmail(lead, { trade: "roofing" }).body,
+    );
+    // Bez diagnozy (nowoczesna strona nie trafia do Top, ale brak audytu) idzie szablon ogólny.
+    const generic = buildUsEmail(
+      { ...lead, tech_audit: null, website: null },
+      { trade: "roofing", price: "" },
+    );
+    expect(generic.body).toContain("couldn't find a website");
+    expect(generic.body).not.toContain("()");
+    // Firma ma stronę, ale bez zmierzonej usterki: nie twierdzimy, że strony nie ma.
+    expect(
+      buildUsEmail({ ...lead, tech_audit: null }, { trade: "roofing" }).body,
+    ).not.toContain("couldn't find a website");
+  });
+
+  it("rozpoznaje odmowę i nieufność w odpowiedzi", () => {
+    expect(isRefusal("Please remove me from your list")).toBe(true);
+    expect(isRefusal("Not interested, thanks")).toBe(true);
+    expect(isRefusal("How did you get this email?")).toBe(true);
+    expect(isRefusal("Sure, send the mockup over")).toBe(false);
+  });
+
+  it("symulator USA daje powtarzalny lejek z e-mailami", () => {
+    const params = {
+      nicheId: "roofing",
+      keyword: "roofing contractor",
+      pkd: "",
+      city: "Tulsa, OK",
+      voivodeship: "OK",
+      sources: { maps: true, olx: false, ceidg: false },
+      market: "US" as const,
+    };
+    const rawLeads = generateSimulatedUsLeads(params, NOW);
+    const a = runFiveStageSieve(rawLeads, { ...us, minScoreThreshold: 50 });
+    expect(a.top.length).toBeGreaterThan(5);
+    expect(a.top.every((l) => l.email && l.hot_score >= 50)).toBe(true);
+    expect(a.top.length + a.rejected.length).toBe(rawLeads.length);
   });
 });

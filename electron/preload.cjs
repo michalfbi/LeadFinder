@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld("leadfinder", {
     syncReplies:()=>ipcRenderer.invoke("email:syncReplies"),status:()=>ipcRenderer.invoke("email:status"),
     control:command=>ipcRenderer.invoke("email:control",command),sendBulk:(ids,consent)=>ipcRenderer.invoke("email:sendBulk",ids,consent),
     validateDeep:email=>ipcRenderer.invoke("email:validateDeep",email),
+    blocked:()=>ipcRenderer.invoke("email:blocked"),
+    checkDomain:(domain,selector)=>ipcRenderer.invoke("email:checkDomain",domain,selector),
     harvestByNiche:(params,cb)=>{const h=(_e,p)=>cb?.(p);ipcRenderer.on("email:progress",h);return ipcRenderer.invoke("email:harvestByNiche",params).finally(()=>ipcRenderer.removeListener("email:progress",h));},
     onChanged:cb=>{const h=()=>cb();ipcRenderer.on("email:changed",h);return ()=>ipcRenderer.removeListener("email:changed",h);},
   },
@@ -110,6 +112,27 @@ contextBridge.exposeInMainWorld("leadfinder", {
       ipcRenderer.on("olx-progress", listener);
       return ipcRenderer.invoke("olx:search", params).finally(() => ipcRenderer.removeListener("olx-progress", listener));
     },
+  },
+
+  // Skrzynka odpowiedzi: klasyfikacja, szkice i decyzje właściciela.
+  inbox: {
+    list: (filter) => ipcRenderer.invoke("inbox:list", filter),
+    counts: () => ipcRenderer.invoke("inbox:counts"),
+    approve: (id, body) => ipcRenderer.invoke("inbox:approve", id, body),
+    dismiss: (id) => ipcRenderer.invoke("inbox:dismiss", id),
+    block: (id) => ipcRenderer.invoke("inbox:block", id),
+    settings: () => ipcRenderer.invoke("inbox:settings"),
+    configure: (value) => ipcRenderer.invoke("inbox:configure", value),
+    testAi: () => ipcRenderer.invoke("inbox:testAi"),
+    onChanged: (cb) => { const h = () => cb(); ipcRenderer.on("inbox:changed", h); return () => ipcRenderer.removeListener("inbox:changed", h); },
+  },
+
+  // Baza danych: stan, kopie zapasowe i dziennik zdarzeń leada.
+  store: {
+    status: () => ipcRenderer.invoke("store:status"),
+    backup: () => ipcRenderer.invoke("store:backup"),
+    openBackups: () => ipcRenderer.invoke("store:openBackups"),
+    events: (kind, id) => ipcRenderer.invoke("store:events", kind, id),
   },
 
   // Snajper Top 50: Mapy/OLX/CEIDG + audyt HTTP/TLS/DOM + wolne domeny .pl.
