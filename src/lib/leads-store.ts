@@ -59,7 +59,15 @@ export type LeadRow = {
 } & Partial<SniperQualification> & {
   /** Moment kwalifikacji przez Snajpera Top 50 (ISO). */
   sniper_scanned_at?: string | null;
+  /** Usługa, którą oferujemy temu leadowi (brak = strona www, jak dotychczas). */
+  offer_type?: OfferId | null;
 };
+
+/** Rynek (kraj) — decyduje o kanale kontaktu, języku i regułach wysyłki. */
+export type MarketId = "PL" | "US";
+
+/** Usługa, pod którą szukamy klientów i piszemy SMS-y. */
+export type OfferId = "website" | "video_ads";
 
 /** Kategoria intencji zakupowej wyznaczona przez 5-stopniowe sito Snajpera. */
 export type IntentCategory =
@@ -69,7 +77,12 @@ export type IntentCategory =
   | "HIGH_REVIEWS_NO_SITE"
   | "OUTDATED_NO_SSL_MOBILE"
   | "NEW_CEIDG_HIGH_TICKET"
-  | "NO_WEBSITE";
+  | "NO_WEBSITE"
+  | "VIDEO_ACTIVE_ADVERTISER"
+  | "VIDEO_PAID_PROMO"
+  | "VIDEO_REVIEW_LEADER"
+  | "VIDEO_SOCIAL_ACTIVE"
+  | "VIDEO_VISUAL_NICHE";
 
 /** Wynik audytu technicznego strony (DOM/TLS/WHOIS) z procesu głównego Electrona. */
 export interface TechAuditResult {
@@ -139,6 +152,10 @@ export type SniperScanParams = {
   city: string;
   voivodeship: string;
   sources: { maps: boolean; olx: boolean; ceidg: boolean };
+  /** Oferta wpływa na to, które firmy warto badać (np. wideo: także firmy ze sprawną stroną). */
+  offer?: OfferId;
+  /** Rynek: poza Polską skan używa tylko Map Google i szuka adresu e-mail na stronie firmy. */
+  market?: MarketId;
 };
 
 export type SniperScanProgress = {

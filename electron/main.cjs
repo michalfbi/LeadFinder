@@ -961,6 +961,8 @@ async function searchOlx(e, payload) {
   const voivodeship = String(payload?.voivodeship ?? "").trim();
   const maxResults = Math.min(Math.max(Math.floor(Number(payload?.maxResults) || 50), 5), 50);
   const checkDDG = payload?.checkDuckDuckGo === true;
+  // Snajper „Reklamy wideo”: firmy z własną stroną są pożądane, więc ich nie odrzucamy.
+  const keepOwnSite = payload?.keepOwnSite === true;
   if (!query) return { ok: false, error: "Brak frazy wyszukiwania." };
   const sendProgress = (data) => { try { e.sender.send("olx-progress", data); } catch {} };
 
@@ -1033,7 +1035,7 @@ async function searchOlx(e, payload) {
 
     // Własna strona www w opisie -> odrzucamy (ma już stronę).
     const links = olxLinksInDescription(description);
-    if (links.ownSite) { skippedSite++; continue; }
+    if (links.ownSite && !keepOwnSite) { skippedSite++; continue; }
 
     // Numer wprost z opisu — natychmiastowy lead, bez klikania.
     let phone = findMobileInText(description, "");
@@ -1060,7 +1062,7 @@ async function searchOlx(e, payload) {
     if (!key || blacklist.has(key) || seenPhones.has(key)) continue;
 
     // Opcjonalny double-check w DuckDuckGo.
-    if (checkDDG) {
+    if (checkDDG && !keepOwnSite) {
       await sleep(800 + Math.random() * 800);
       if (await olxDdgHasSite(title, loc)) { skippedSite++; continue; }
     }
@@ -1077,6 +1079,7 @@ async function searchOlx(e, payload) {
       zrodlo: "OLX",
       zrodlo_telefonu: phoneSource,
       socialOnly: links.socialOnly,
+      website: links.ownSite || null,
       // Snajper: wyróżnienie/promowanie ogłoszenia i imię osoby kontaktowej.
       isPromoted: Boolean(
         fullOffer?.promotion?.highlighted ||
@@ -1189,6 +1192,7 @@ const sniperScanner = createSniperScanner({
   searchCeidg,
   hasCeidgKey: () => Boolean(String(readSettings().ceidgApiKey ?? "").trim()),
   validatePolishMobile,
+  validateEmail: validateEmailDeep,
   suggestDomains,
   checkDomainAvailability,
   fetchImpl: (url, init) => fetch(url, init),
@@ -2451,7 +2455,7 @@ for(const name of ["snapshot","configure","run","action","test","testReport","re
   if(!autopilot) throw new Error("Autopilot uruchamia się.");
   return autopilot[name](...args);
 });
-for(const name of ["list","insert","update","remove","blacklist","settings","configure","test","syncReplies","status","control"])ipcMain.handle(`email:${name}`,async (_e,...args)=>{if(!emailEngine)throw new Error("Moduł e-mail uruchamia się.");return emailEngine[name](...args);});
+for(const name of ["list","insert","update","remove","blacklist","blocked","checkDomain","settings","configure","test","syncReplies","status","control"])ipcMain.handle(`email:${name}`,async (_e,...args)=>{if(!emailEngine)throw new Error("Moduł e-mail uruchamia się.");return emailEngine[name](...args);});
 // sendBulk z głęboką walidacją MX przed pierwszą próbą SMTP — odrzuca adresy
 // z nieistniejącymi domenami, żeby chronić konto przed Hard Bounce.
 ipcMain.handle("email:sendBulk",async (event,ids,consent)=>{
