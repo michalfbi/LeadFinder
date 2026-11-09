@@ -213,6 +213,139 @@ async function auditSite(
   };
 }
 
+const EMAIL_FIND_RE =
+  /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+/g;
+const FREE_MAILBOXES = new Set([
+  "gmail.com",
+  "yahoo.com",
+  "outlook.com",
+  "hotmail.com",
+  "aol.com",
+  "icloud.com",
+  "msn.com",
+  "live.com",
+  "comcast.net",
+  "att.net",
+  "sbcglobal.net",
+  "verizon.net",
+  "wp.pl",
+  "onet.pl",
+  "interia.pl",
+  "o2.pl",
+]);
+const GENERIC_LOCAL_PARTS = [
+  "info",
+  "contact",
+  "office",
+  "hello",
+  "sales",
+  "admin",
+  "service",
+  "support",
+  "estimates",
+  "quotes",
+];
+const PLACEHOLDER_EMAIL_RE =
+  /^(?:you|your|name|email|user|example|test|someone|john\.?doe|jane\.?doe|firstname|username)@|@(?:example|domain|email|yourdomain|mysite|sentry|wixpress|godaddy)\./;
+
+/** Adresy e-mail z kodu strony: linki mailto i tekst, bez plików graficznych i atrap. */
+function extractPageEmails(html) {
+  const $ = cheerio.load(String(html ?? ""));
+  const chunks = [];
+  $('a[href^="mailto:" i]').each((_, el) => {
+    try {
+      chunks.push(
+        decodeURIComponent(String($(el).attr("href")).slice(7).split("?")[0]),
+      );
+    } catch {
+      /* uszkodzony link mailto */
+    }
+  });
+  $("script,style,noscript,svg").remove();
+  chunks.push($("body").text());
+  const found = new Set();
+  for (const chunk of chunks) {
+    for (const match of String(chunk).match(EMAIL_FIND_RE) ?? []) {
+      const email = match.toLowerCase().replace(/\.$/, "");
+      if (email.length > 254) continue;
+      if (/\.(?:png|jpe?g|gif|webp|svg|avif|css|js)$/.test(email)) continue;
+      if (PLACEHOLDER_EMAIL_RE.test(email)) continue;
+      found.add(email);
+    }
+  }
+  return [...found];
+}
+
+/**
+ * Wybiera adres firmy: najpierw ogólny we własnej domenie (info@, contact@),
+ * potem dowolny we własnej domenie, na końcu darmowa skrzynka. Adresy w cudzych
+ * domenach (np. agencji, która robiła stronę) pomijamy.
+ */
+function pickBusinessEmail(emails, siteHost) {
+  const host = String(siteHost ?? "").replace(/^www\./, "");
+  const own = emails.filter(
+    (e) => host && (e.endsWith(`@${host}`) || e.endsWith(`.${host}`)),
+  );
+  for (const local of GENERIC_LOCAL_PARTS) {
+    const hit = own.find((e) => e.startsWith(`${local}@`));
+    if (hit) return hit;
+  }
+  if (own.length) return own[0];
+  return emails.find((e) => FREE_MAILBOXES.has(e.split("@")[1])) ?? null;
+}
+
+/** Szuka adresu e-mail firmy na stronie głównej i podstronie kontaktowej. */
+async function findSiteEmail(rawUrl, { fetchImpl, userAgent }) {
+  const host = hostOf(rawUrl);
+  if (!host) return null;
+  const start = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  const headers = {
+    "User-Agent": userAgent,
+    "Accept-Language": "en-US,en;q=0.9",
+  };
+  const load = async (url) => {
+    try {
+      const res = await fetchImpl(url, {
+        redirect: "follow",
+        headers,
+        signal: AbortSignal.timeout(AUDIT_TIMEOUT_MS),
+      });
+      return res.status < 400 ? (await res.text()).slice(0, 600000) : "";
+    } catch {
+      return "";
+    }
+  };
+  const home = await load(start);
+  if (!home) return null;
+  const emails = extractPageEmails(home);
+  let pick = pickBusinessEmail(emails, host);
+  if (pick) return pick;
+  const $ = cheerio.load(home);
+  const links = [];
+  $("a[href]").each((_, el) => {
+    const label = `${$(el).attr("href")} ${$(el).text()}`;
+    if (!/contact|about|get-in-touch|kontakt/i.test(label)) return;
+    try {
+      const u = new URL($(el).attr("href"), start);
+      if (
+        hostOf(u.href) === host &&
+        /^https?:$/.test(u.protocol) &&
+        !links.includes(u.href)
+      )
+        links.push(u.href);
+    } catch {
+      /* niepoprawny adres */
+    }
+  });
+  for (const url of links.slice(0, 2)) {
+    const page = await load(url);
+    if (!page) continue;
+    pick = pickBusinessEmail([...emails, ...extractPageEmails(page)], host);
+    if (pick) return pick;
+  }
+  return null;
+}
+
 /** Uruchamia zadania z ograniczoną współbieżnością, zachowując kolejność wyników. */
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -276,11 +409,15 @@ function createSniperScanner(deps) {
 
   async function collect(params, progress, notes) {
     const video = params?.offer === "video_ads";
+    const abroad = Boolean(params?.market) && params.market !== "PL";
     const raw = [];
     const keyword = String(params?.keyword ?? "").trim();
     const city = String(params?.city ?? "").trim();
     const voivodeship = String(params?.voivodeship ?? "").trim();
-    const sources = params?.sources ?? { maps: true, olx: true, ceidg: true };
+    // OLX i CEIDG to polskie źródła — poza Polską zostają same Mapy Google.
+    const sources = abroad
+      ? { maps: true, olx: false, ceidg: false }
+      : (params?.sources ?? { maps: true, olx: true, ceidg: true });
     const relay = { sender: { send: () => {} } };
 
     if (sources.maps) {
@@ -411,9 +548,9 @@ function createSniperScanner(deps) {
   }
 
   /** Lustro sita 1 — oszczędza audyty dla numerów, które i tak odpadną. */
-  function worthAuditing(r, maxReviews) {
+  function worthAuditing(r, maxReviews, abroad = false) {
     return (
-      deps.validatePolishMobile(r.telefon ?? "").isValidMobile &&
+      (abroad || deps.validatePolishMobile(r.telefon ?? "").isValidMobile) &&
       !isCorporateName(r.nazwa) &&
       (r.reviews ?? 0) <= maxReviews
     );
@@ -429,6 +566,7 @@ function createSniperScanner(deps) {
     };
     const notes = [];
     const video = params?.offer === "video_ads";
+    const abroad = Boolean(params?.market) && params.market !== "PL";
     const maxReviews = video
       ? rules.video.thresholds.maxReviews
       : rules.thresholds.maxReviews;
@@ -448,13 +586,13 @@ function createSniperScanner(deps) {
       const ownSite = (r) =>
         r.website && !isSocialUrl(r.website) && !isFreeBuilderUrl(r.website);
       const toAudit = raw.filter(
-        (r) => ownSite(r) && worthAuditing(r, maxReviews),
+        (r) => ownSite(r) && worthAuditing(r, maxReviews, abroad),
       );
       const rivals = raw
         .filter(
           (r) =>
             ownSite(r) &&
-            !worthAuditing(r, maxReviews) &&
+            !worthAuditing(r, maxReviews, abroad) &&
             (r.rating ?? 0) >= rules.thresholds.competitorMinRating,
         )
         .slice(0, COMPETITOR_AUDITS);
@@ -480,9 +618,59 @@ function createSniperScanner(deps) {
 
       // Wolne domeny: brak strony / social / kreator / awaria strony.
       // Wolne domeny są argumentem tylko w ofercie WWW.
+      // Poza Polską kontaktujemy się e-mailem: szukamy adresu na stronie firmy.
+      // Pomijamy nowoczesne strony (sito i tak je odrzuci) i strony, które nie działają.
+      if (abroad) {
+        const modern = (a) =>
+          a &&
+          a.httpStatus !== null &&
+          a.httpStatus < 400 &&
+          a.hasSsl &&
+          a.hasMobileViewport &&
+          a.responseTimeMs !== null &&
+          a.responseTimeMs < rules.thresholds.fastSiteMs &&
+          (a.copyrightYear === null ||
+            a.copyrightYear >= rules.thresholds.outdatedBeforeYear);
+        const reachable = raw.filter((r) => {
+          if (
+            !r.website ||
+            isSocialUrl(r.website) ||
+            !worthAuditing(r, maxReviews, abroad)
+          )
+            return false;
+          if (isFreeBuilderUrl(r.website)) return true;
+          const a = r.tech_audit;
+          return a && a.httpStatus !== null && a.httpStatus < 400 && !modern(a);
+        });
+        let searched = 0;
+        await mapLimit(reachable, AUDIT_CONCURRENCY, async (r) => {
+          const email = await findSiteEmail(r.website, {
+            fetchImpl: deps.fetchImpl,
+            userAgent: deps.userAgent,
+          });
+          if (email) {
+            const check = deps.validateEmail
+              ? await deps.validateEmail(email).catch(() => null)
+              : { ok: true };
+            if (check?.ok) r.email = email;
+          }
+          searched++;
+          send({
+            phase: "audit",
+            label: `E-mail: ${r.nazwa}`,
+            index: searched,
+            total: reachable.length,
+          });
+        });
+        const withEmail = raw.filter((r) => r.email).length;
+        notes.push(
+          `Adres e-mail znaleziono dla ${withEmail} z ${reachable.length} firm ze słabą stroną.`,
+        );
+      }
+
       const needsDomain = raw.filter((r) => {
-        if (video) return false;
-        if (!worthAuditing(r, maxReviews)) return false;
+        if (video || abroad) return false;
+        if (!worthAuditing(r, maxReviews, abroad)) return false;
         if (!ownSite(r)) return true;
         const a = r.tech_audit;
         return a && (a.httpStatus === null || a.httpStatus >= 400);
@@ -540,6 +728,9 @@ function createSniperScanner(deps) {
 }
 
 module.exports = {
+  extractPageEmails,
+  pickBusinessEmail,
+  findSiteEmail,
   analyzeHtml,
   auditSite,
   createSniperScanner,

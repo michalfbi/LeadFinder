@@ -1192,6 +1192,7 @@ const sniperScanner = createSniperScanner({
   searchCeidg,
   hasCeidgKey: () => Boolean(String(readSettings().ceidgApiKey ?? "").trim()),
   validatePolishMobile,
+  validateEmail: validateEmailDeep,
   suggestDomains,
   checkDomainAvailability,
   fetchImpl: (url, init) => fetch(url, init),
@@ -2454,7 +2455,7 @@ for(const name of ["snapshot","configure","run","action","test","testReport","re
   if(!autopilot) throw new Error("Autopilot uruchamia się.");
   return autopilot[name](...args);
 });
-for(const name of ["list","insert","update","remove","blacklist","settings","configure","test","syncReplies","status","control"])ipcMain.handle(`email:${name}`,async (_e,...args)=>{if(!emailEngine)throw new Error("Moduł e-mail uruchamia się.");return emailEngine[name](...args);});
+for(const name of ["list","insert","update","remove","blacklist","blocked","checkDomain","settings","configure","test","syncReplies","status","control"])ipcMain.handle(`email:${name}`,async (_e,...args)=>{if(!emailEngine)throw new Error("Moduł e-mail uruchamia się.");return emailEngine[name](...args);});
 // sendBulk z głęboką walidacją MX przed pierwszą próbą SMTP — odrzuca adresy
 // z nieistniejącymi domenami, żeby chronić konto przed Hard Bounce.
 ipcMain.handle("email:sendBulk",async (event,ids,consent)=>{

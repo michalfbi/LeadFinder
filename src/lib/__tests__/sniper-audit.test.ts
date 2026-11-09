@@ -253,3 +253,125 @@ describe("skaner Snajpera — oferta wideo", () => {
     );
   });
 });
+
+describe("skaner Snajpera — rynek USA", () => {
+  const {
+    pickBusinessEmail,
+    extractPageEmails,
+  } = require("../../../electron/sniper-audit.cjs");
+
+  it("wybiera adres firmy i pomija atrapy oraz cudze domeny", () => {
+    const html = `<body><img src="logo@2x.png"><a href="mailto:Info@MillerRoofing.com?subject=Hi">Email</a> webmaster@agency.io you@example.com miller.roofing@gmail.com</body>`;
+    const emails = extractPageEmails(html);
+    expect(emails).toContain("info@millerroofing.com");
+    expect(emails).not.toContain("logo@2x.png");
+    expect(emails).not.toContain("you@example.com");
+    expect(pickBusinessEmail(emails, "millerroofing.com")).toBe(
+      "info@millerroofing.com",
+    );
+    expect(
+      pickBusinessEmail(
+        ["webmaster@agency.io", "miller.roofing@gmail.com"],
+        "millerroofing.com",
+      ),
+    ).toBe("miller.roofing@gmail.com");
+    expect(
+      pickBusinessEmail(["webmaster@agency.io"], "millerroofing.com"),
+    ).toBeNull();
+  });
+
+  it("używa tylko Map, nie wymaga polskiej komórki i znajduje e-mail na podstronie kontaktu", async () => {
+    const fetched: string[] = [];
+    const scanner = createSniperScanner({
+      scrapeGoogleMaps: async (keyword: string, city: string) => ({
+        ok: true,
+        items: [
+          {
+            name: "Miller Roofing",
+            phone: "(918) 555-0123",
+            website: "http://millerroofing.com",
+            rating: 4.8,
+            reviews: 42,
+            url: "x!1sAAA!",
+            _q: `${keyword} ${city}`,
+          },
+          {
+            name: "Summit Roofing",
+            phone: "(918) 555-0199",
+            website: "https://summitroofing.com",
+            rating: 4.9,
+            reviews: 60,
+            url: "x!1sBBB!",
+          },
+          {
+            name: "No Site Roofing",
+            phone: "(918) 555-0111",
+            website: null,
+            rating: 4.5,
+            reviews: 12,
+            url: "x!1sCCC!",
+          },
+        ],
+      }),
+      searchOlx: async () => {
+        throw new Error("OLX nie powinien być odpytany");
+      },
+      searchCeidg: async () => {
+        throw new Error("CEIDG nie powinien być odpytany");
+      },
+      hasCeidgKey: () => true,
+      validatePolishMobile: () => ({ isValidMobile: false }),
+      validateEmail: async (email: string) => ({
+        ok: !email.includes("bounce"),
+      }),
+      suggestDomains: () => {
+        throw new Error("domeny .pl nie dotyczą USA");
+      },
+      checkDomainAvailability: async () => ({ available: true }),
+      fetchImpl: async (url: string) => {
+        fetched.push(url);
+        if (url.includes("summitroofing"))
+          return response(200, MODERN_PAGE, url);
+        if (url.endsWith("/contact"))
+          return response(
+            200,
+            `<body>Call us or email office@millerroofing.com</body>`,
+            url,
+          );
+        return response(
+          200,
+          `${OLD_PAGE}<a href="/contact">Contact us</a>`,
+          url,
+        );
+      },
+      userAgent: "test",
+    });
+    const res = await scanner.runDeepScan(null, {
+      keyword: "roofing contractor",
+      city: "Tulsa, OK",
+      voivodeship: "OK",
+      pkd: "",
+      market: "US",
+      sources: { maps: true, olx: true, ceidg: true },
+    });
+    expect(res.ok).toBe(true);
+    const miller = res.raw.find(
+      (r: { nazwa: string }) => r.nazwa === "Miller Roofing",
+    );
+    expect(miller.email).toBe("office@millerroofing.com");
+    expect(miller.tech_audit.hasMobileViewport).toBe(false);
+    // Nowoczesna strona: nie szukamy e-maila, bo sito i tak ją odrzuci.
+    expect(
+      res.raw.find((r: { nazwa: string }) => r.nazwa === "Summit Roofing")
+        .email,
+    ).toBeNull();
+    expect(fetched.some((u) => u.includes("summitroofing.com/contact"))).toBe(
+      false,
+    );
+    expect(
+      res.notes.some((n: string) =>
+        /Adres e-mail znaleziono dla 1 z 1/.test(n),
+      ),
+    ).toBe(true);
+  });
+});

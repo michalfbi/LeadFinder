@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Clapperboard, Globe, Crosshair, Database, MessageSquare, Bot, ChartNoAxesCombined, Settings2, Radar, Smartphone, PanelsTopLeft, ArrowUpRight, CircleHelp } from 'lucide-react';
+import { Search, Mail, Clapperboard, Globe, Crosshair, Database, MessageSquare, Bot, ChartNoAxesCombined, Settings2, Radar, Smartphone, PanelsTopLeft, ArrowUpRight, CircleHelp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getBridge, type BulkQueueStatus } from '@/lib/bulk-send';
 import { openDesktopWidget, widgetBridge } from '@/lib/widget-bridge';
@@ -11,6 +11,7 @@ export const APP_DESTINATIONS = [
   { id: 'sniper', label: '🎯 Snajper (Top 50)', icon: Crosshair },
   { id: 'base', label: 'Moja Baza', icon: Database },
   { id: 'message', label: 'Szablony & Wysyłka', icon: MessageSquare },
+  { id: 'email', label: 'E-mail (USA)', icon: Mail },
   { id: 'autopilot', label: 'Autopilot', icon: Bot },
   { id: 'analytics', label: 'Analityka', icon: ChartNoAxesCombined },
   { id: 'settings', label: 'Ustawienia & Widget', icon: Settings2 },

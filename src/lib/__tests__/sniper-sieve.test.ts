@@ -10,6 +10,11 @@ import {
   toPolishVocative,
 } from "../sniper-sieve";
 import { smsSegments, spinSpintaxSeeded } from "../message-template";
+import {
+  buildUsEmail,
+  generateSimulatedUsLeads,
+  isRefusal,
+} from "../market-outreach";
 
 const NOW = new Date("2026-11-02T12:00:00Z");
 
@@ -530,5 +535,112 @@ describe("oferta: reklamy wideo AI", () => {
       intent_category: null,
     } as never);
     expect(legacy.templateId).toBe("🎬 Wideo · Branża wizualna");
+  });
+});
+
+describe("rynek USA: kanał e-mail", () => {
+  const us = {
+    now: NOW,
+    channel: "email" as const,
+    market: "US" as const,
+    minScoreThreshold: 0,
+  };
+  const usRaw = (patch: Partial<SniperRawLead> = {}) =>
+    raw({
+      nazwa: "Miller Roofing",
+      telefon: "+19185550123",
+      miasto: "Tulsa, OK",
+      email: "info@millerroofing.com",
+      website: "http://millerroofing.com",
+      tech_audit: audit({ hasSsl: false, copyrightYear: 2014 }),
+      whois_free_domain: null,
+      ...patch,
+    });
+
+  it("kwalifikuje po adresie e-mail, a amerykański numer nie przeszkadza", () => {
+    const res = runFiveStageSieve([usRaw()], us);
+    const lead = res.top[0]!;
+    expect(lead.channel).toBe("email");
+    expect(lead.market).toBe("US");
+    expect(lead.intent_category).toBe("OUTDATED_NO_SSL_MOBILE");
+    // Ten sam rekord w kanale SMS odpada na polskim numerze komórkowym.
+    expect(
+      runFiveStageSieve([usRaw()], { now: NOW, minScoreThreshold: 0 }).top,
+    ).toHaveLength(0);
+  });
+
+  it("odrzuca brak e-maila, rezygnacje, duplikaty i sieciówki", () => {
+    const reason = (lead: SniperRawLead, extra = {}) =>
+      runFiveStageSieve([lead], { ...us, ...extra }).rejected[0]
+        ?.rejection_reason;
+    expect(reason(usRaw({ email: null }))).toBe(
+      "Brak publicznego adresu e-mail",
+    );
+    expect(
+      reason(usRaw(), { blacklistEmails: ["INFO@millerroofing.com"] }),
+    ).toBe("Adres na liście rezygnacji");
+    expect(
+      reason(usRaw(), { existingEmails: ["info@millerroofing.com"] }),
+    ).toBe("Adres jest już w bazie e-mail");
+    expect(reason(usRaw({ nazwa: "Roofing Corp" }))).toBe(
+      "Zbyt duża firma (ryzyko sekretariatu/call center)",
+    );
+    const dup = runFiveStageSieve([usRaw({ id: "a" }), usRaw({ id: "b" })], us);
+    expect(dup.rejected[0]!.rejection_reason).toBe(
+      "Duplikat adresu w tej paczce",
+    );
+  });
+
+  it("buduje e-mail po angielsku tylko ze sprawdzonych faktów", () => {
+    const lead = runFiveStageSieve([usRaw()], us).top[0]!;
+    const mail = buildUsEmail(lead, { trade: "roofing", senderName: "Michal" });
+    expect(mail.subject).toMatch(/Miller Roofing website$/);
+    expect(mail.body).toContain(
+      'browsers mark it as "Not Secure" because there is no SSL certificate',
+    );
+    expect(mail.body).toContain(
+      "Your Google reviews are great (42 reviews, 4.8 stars)",
+    );
+    expect(mail.body).toContain("(fixed price from $1,500)");
+    expect(mail.body.endsWith("Best,\nMichal")).toBe(true);
+    expect(mail.body).not.toMatch(/[{}|]/);
+    expect(buildUsEmail(lead, { trade: "roofing" }).body).toBe(
+      buildUsEmail(lead, { trade: "roofing" }).body,
+    );
+    // Bez diagnozy (nowoczesna strona nie trafia do Top, ale brak audytu) idzie szablon ogólny.
+    const generic = buildUsEmail(
+      { ...lead, tech_audit: null, website: null },
+      { trade: "roofing", price: "" },
+    );
+    expect(generic.body).toContain("couldn't find a website");
+    expect(generic.body).not.toContain("()");
+    // Firma ma stronę, ale bez zmierzonej usterki: nie twierdzimy, że strony nie ma.
+    expect(
+      buildUsEmail({ ...lead, tech_audit: null }, { trade: "roofing" }).body,
+    ).not.toContain("couldn't find a website");
+  });
+
+  it("rozpoznaje odmowę i nieufność w odpowiedzi", () => {
+    expect(isRefusal("Please remove me from your list")).toBe(true);
+    expect(isRefusal("Not interested, thanks")).toBe(true);
+    expect(isRefusal("How did you get this email?")).toBe(true);
+    expect(isRefusal("Sure, send the mockup over")).toBe(false);
+  });
+
+  it("symulator USA daje powtarzalny lejek z e-mailami", () => {
+    const params = {
+      nicheId: "roofing",
+      keyword: "roofing contractor",
+      pkd: "",
+      city: "Tulsa, OK",
+      voivodeship: "OK",
+      sources: { maps: true, olx: false, ceidg: false },
+      market: "US" as const,
+    };
+    const rawLeads = generateSimulatedUsLeads(params, NOW);
+    const a = runFiveStageSieve(rawLeads, { ...us, minScoreThreshold: 50 });
+    expect(a.top.length).toBeGreaterThan(5);
+    expect(a.top.every((l) => l.email && l.hot_score >= 50)).toBe(true);
+    expect(a.top.length + a.rejected.length).toBe(rawLeads.length);
   });
 });

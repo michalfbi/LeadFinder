@@ -63,6 +63,9 @@ export type LeadRow = {
   offer_type?: OfferId | null;
 };
 
+/** Rynek (kraj) — decyduje o kanale kontaktu, języku i regułach wysyłki. */
+export type MarketId = "PL" | "US";
+
 /** Usługa, pod którą szukamy klientów i piszemy SMS-y. */
 export type OfferId = "website" | "video_ads";
 
@@ -151,6 +154,8 @@ export type SniperScanParams = {
   sources: { maps: boolean; olx: boolean; ceidg: boolean };
   /** Oferta wpływa na to, które firmy warto badać (np. wideo: także firmy ze sprawną stroną). */
   offer?: OfferId;
+  /** Rynek: poza Polską skan używa tylko Map Google i szuka adresu e-mail na stronie firmy. */
+  market?: MarketId;
 };
 
 export type SniperScanProgress = {

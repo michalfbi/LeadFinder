@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld("leadfinder", {
     syncReplies:()=>ipcRenderer.invoke("email:syncReplies"),status:()=>ipcRenderer.invoke("email:status"),
     control:command=>ipcRenderer.invoke("email:control",command),sendBulk:(ids,consent)=>ipcRenderer.invoke("email:sendBulk",ids,consent),
     validateDeep:email=>ipcRenderer.invoke("email:validateDeep",email),
+    blocked:()=>ipcRenderer.invoke("email:blocked"),
+    checkDomain:(domain,selector)=>ipcRenderer.invoke("email:checkDomain",domain,selector),
     harvestByNiche:(params,cb)=>{const h=(_e,p)=>cb?.(p);ipcRenderer.on("email:progress",h);return ipcRenderer.invoke("email:harvestByNiche",params).finally(()=>ipcRenderer.removeListener("email:progress",h));},
     onChanged:cb=>{const h=()=>cb();ipcRenderer.on("email:changed",h);return ()=>ipcRenderer.removeListener("email:changed",h);},
   },

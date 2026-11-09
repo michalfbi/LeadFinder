@@ -1,7 +1,9 @@
 import rules from "../../sniper-rules.json";
+import countryRules from "../../country-rules.json";
 import type {
   IntentCategory,
   LeadRow,
+  MarketId,
   NewLead,
   OfferId,
   SieveStage,
@@ -22,6 +24,7 @@ import {
 import { buildSniperMessage } from "./message-template";
 import { suggestDomains } from "./domain-check";
 import { findNiche } from "./niches-catalog";
+import { generateSimulatedUsLeads, usNiche } from "./market-outreach";
 
 export { toPolishVocative, extractFirstName } from "./polish-vocative";
 
@@ -81,6 +84,14 @@ export type SieveOptions = {
   highTicket?: boolean;
   /** Oferta, pod którą kwalifikujemy leady (domyślnie strony www). */
   offer?: OfferId;
+  /** Kanał kontaktu: przy e-mailu sito 1 sprawdza adres e-mail zamiast komórki. */
+  channel?: "sms" | "email";
+  /** Rynek — dokłada własną listę słów „korporacyjnych”. */
+  market?: MarketId;
+  /** Adresy e-mail z listy rezygnacji. */
+  blacklistEmails?: Iterable<string>;
+  /** Adresy e-mail, które są już w bazie e-mail. */
+  existingEmails?: Iterable<string>;
   /** Wideo: czy nisza dobrze sprzedaje się w formie wideo. */
   visualNiche?: boolean;
   /** Etykieta niszy wstawiana do szablonów ({branza}). */
@@ -98,6 +109,9 @@ export type SniperLead = SniperRawLead &
     tech_diagnosis: string | null;
     nisza: string | null;
     offer: OfferId;
+    /** Kanał, którym można się z tą firmą skontaktować. */
+    channel: "sms" | "email";
+    market: MarketId;
   };
 
 export type SieveFunnel = {
@@ -251,6 +265,65 @@ type Draft = {
   diagnosis: string | null;
   competitor: string | null;
 };
+
+const EMAIL_RE =
+  /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
+
+export function emailKey(email: string | null | undefined): string {
+  const value = String(email ?? "")
+    .trim()
+    .toLowerCase();
+  return value.length <= 254 && EMAIL_RE.test(value) ? value : "";
+}
+
+function isCorporateFor(
+  name: string | null | undefined,
+  market: MarketId,
+): boolean {
+  if (isCorporateName(name)) return true;
+  if (market !== "US") return false;
+  const text = lower(name);
+  return countryRules.markets.US.corporateWords.some((word) => {
+    const escaped = lower(word).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^a-z0-9])${escaped}(?=$|[^a-z0-9])`, "i").test(text);
+  });
+}
+
+/** Sito 1 dla kanału e-mail: publiczny adres firmy zamiast numeru komórkowego. */
+function stageOneEmail(
+  d: Draft,
+  blocked: Set<string>,
+  existing: Set<string>,
+  seen: Set<string>,
+  maxReviews: number,
+  market: MarketId,
+): void {
+  const key = emailKey(d.raw.email);
+  if (!key) {
+    d.rejection = "Brak publicznego adresu e-mail";
+    return;
+  }
+  if (blocked.has(key)) {
+    d.rejection = "Adres na liście rezygnacji";
+    return;
+  }
+  if (existing.has(key)) {
+    d.rejection = "Adres jest już w bazie e-mail";
+    return;
+  }
+  if (seen.has(key)) {
+    d.rejection = "Duplikat adresu w tej paczce";
+    return;
+  }
+  seen.add(key);
+  if (
+    isCorporateFor(d.raw.nazwa, market) ||
+    (d.raw.reviews ?? 0) > maxReviews
+  ) {
+    d.rejection = "Zbyt duża firma (ryzyko sekretariatu/call center)";
+    return;
+  }
+}
 
 function stageOne(
   d: Draft,
@@ -711,6 +784,8 @@ function finalize(
     tech_diagnosis: d.diagnosis,
     nisza: nicheLabel,
     offer,
+    channel: "sms",
+    market: "PL",
   };
 }
 
@@ -746,6 +821,29 @@ export function runFiveStageSieve(
     [...(options.existingPhones ?? [])].map(phoneKey9).filter(Boolean),
   );
   const seen = new Set<string>();
+  const emailChannel = options.channel === "email";
+  const market: MarketId = options.market ?? "PL";
+  const blockedEmails = new Set(
+    [...(options.blacklistEmails ?? [])].map(emailKey).filter(Boolean),
+  );
+  const existingEmails = new Set(
+    [...(options.existingEmails ?? [])].map(emailKey).filter(Boolean),
+  );
+  const first = (d: Draft) =>
+    emailChannel
+      ? stageOneEmail(
+          d,
+          blockedEmails,
+          existingEmails,
+          seen,
+          maxReviews,
+          market,
+        )
+      : stageOne(d, blocked, existing, seen, maxReviews);
+  const tag = (lead: SniperLead): SniperLead =>
+    emailChannel || market !== "PL"
+      ? { ...lead, channel: emailChannel ? "email" : "sms", market }
+      : lead;
   const offer: OfferId = options.offer ?? "website";
   const video = offer === "video_ads";
   const competitors = video
@@ -792,7 +890,7 @@ export function runFiveStageSieve(
     };
     const steps: Array<() => void> = video
       ? [
-          () => stageOne(d, blocked, existing, seen, maxReviews),
+          () => first(d),
           () => stageTwoVideo(d, gates),
           () =>
             stageThreeVideo(
@@ -804,7 +902,7 @@ export function runFiveStageSieve(
           () => stageFourVideo(d, competitors),
         ]
       : [
-          () => stageOne(d, blocked, existing, seen, maxReviews),
+          () => first(d),
           () => stageTwo(d, gates),
           () => stageThree(d, gates, now, options.highTicket === true),
           () => stageFour(d, competitors),
@@ -814,7 +912,7 @@ export function runFiveStageSieve(
       steps[i]!();
       if (d.rejection) {
         rejectedByStage[d.stage]++;
-        rejected.push(finalize(d, false, nicheLabel, offer));
+        rejected.push(tag(finalize(d, false, nicheLabel, offer)));
         failed = true;
         break;
       }
@@ -825,7 +923,7 @@ export function runFiveStageSieve(
     }
     if (failed) continue;
     d.stage = 5;
-    candidates.push(finalize(d, true, nicheLabel, offer));
+    candidates.push(tag(finalize(d, true, nicheLabel, offer)));
   }
 
   candidates.sort(compareLeads);
@@ -1330,13 +1428,21 @@ export async function runSniperScan(
   const now = options.now ?? new Date();
   const niche = findNiche(params.nicheId);
   const bridge = sniperBridge();
-  const offer: OfferId = options.offer ?? params.offer ?? "website";
+  const market: MarketId = options.market ?? params.market ?? "PL";
+  const abroad = market !== "PL";
+  // Poza Polską kontaktujemy się e-mailem i oferujemy na razie tylko strony www.
+  const offer: OfferId = abroad
+    ? "website"
+    : (options.offer ?? params.offer ?? "website");
+  const nicheLabel = abroad
+    ? (usNiche(params.nicheId)?.label ?? params.keyword)
+    : (niche?.label ?? params.keyword);
   let raw: SniperRawLead[];
   let notes: string[] = [];
   let simulated = false;
   if (bridge?.runDeepScan) {
     const res = await bridge.runDeepScan(
-      { ...params, offer },
+      { ...params, offer, market },
       options.onProgress,
     );
     if (!res?.ok)
@@ -1345,23 +1451,34 @@ export async function runSniperScan(
     notes = res.notes ?? [];
   } else {
     simulated = true;
-    const total = 450;
+    const total = abroad ? 240 : 450;
     const steps: Array<readonly [SniperScanProgress["phase"], string]> = [
-      ["collect", "Pobieram firmy z Map Google, OLX i CEIDG (symulacja)"],
+      [
+        "collect",
+        abroad
+          ? "Pobieram firmy z Map Google w USA (symulacja)"
+          : "Pobieram firmy z Map Google, OLX i CEIDG (symulacja)",
+      ],
       [
         "audit",
-        "Audyt stron: HTTP, SSL, viewport, piksele reklamowe (symulacja)",
+        abroad
+          ? "Audyt stron i szukanie adresów e-mail (symulacja)"
+          : "Audyt stron: HTTP, SSL, viewport, piksele reklamowe (symulacja)",
       ],
     ];
-    if (offer === "website")
+    if (offer === "website" && !abroad)
       steps.push(["domains", "Sprawdzam wolne domeny .pl (symulacja)"]);
     for (const [phase, label] of steps) {
       options.onProgress?.({ phase, label, index: 0, total });
       await new Promise((r) => setTimeout(r, 350));
     }
-    raw = generateSimulatedRawLeads(params, now, total);
+    raw = abroad
+      ? generateSimulatedUsLeads(params, now, total)
+      : generateSimulatedRawLeads(params, now, total);
     notes = [
-      "Podgląd w przeglądarce: dane są symulowane, żadne zapytanie ani SMS nie wychodzi.",
+      abroad
+        ? "Podgląd w przeglądarce: dane są symulowane, żadne zapytanie ani e-mail nie wychodzi."
+        : "Podgląd w przeglądarce: dane są symulowane, żadne zapytanie ani SMS nie wychodzi.",
     ];
   }
   options.onProgress?.({
@@ -1374,9 +1491,11 @@ export async function runSniperScan(
     ...options,
     now,
     offer,
+    market,
+    channel: abroad ? "email" : "sms",
     highTicket: isHighTicketNiche(params.nicheId),
     visualNiche: isVisualNiche(params.nicheId),
-    nicheLabel: niche?.label ?? params.keyword,
+    nicheLabel,
   });
   return { ...result, simulated, notes, scannedAt: now.toISOString() };
 }

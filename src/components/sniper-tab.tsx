@@ -77,7 +77,7 @@ import {
   type OfferId,
 } from "@/lib/offer-settings";
 
-const GLASS = "rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl";
+export const GLASS = "rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl";
 
 type GateMeta = { key: keyof SniperGates; label: string; hint: string };
 
@@ -146,7 +146,7 @@ const FUNNEL_COPY: Record<
   },
 };
 
-const INTENT_LABEL: Record<SniperLead["intent_category"], string> = {
+export const INTENT_LABEL: Record<SniperLead["intent_category"], string> = {
   EXPIRED_OR_BROKEN_SITE: "🚨 Awaria strony",
   PAID_AD_NO_SITE: "💸 Płatne OLX bez strony",
   SOCIAL_OR_FREE_BUILDER: "📱 Tylko FB / kreator",
@@ -168,7 +168,7 @@ const SOURCE_LABEL: Record<SniperLead["source"], string> = {
 };
 
 /** Kolorowy pierścień Hot Score: szmaragd ≥85, złoto ≥75, reszta wyciszona. */
-function ScoreRing({ score }: { score: number }) {
+export function ScoreRing({ score }: { score: number }) {
   const r = 22;
   const c = 2 * Math.PI * r;
   const tone =
@@ -214,7 +214,7 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-function FunnelStep({
+export function FunnelStep({
   title,
   value,
   note,

@@ -207,7 +207,8 @@ import {
   type BulkResult,
 } from "@/lib/bulk-send";
 import { SmsSpeedPanel } from '@/components/sms-speed-panel';
-import { SniperTab } from "@/components/sniper-tab";
+import { SniperWorkspace } from "@/components/sniper-workspace";
+import { EmailOutreach } from "@/components/email-outreach";
 import { offerOf, readOfferPrice, useOfferSettings } from "@/lib/offer-settings";
 import { offerMessageForRow } from "@/lib/sniper-sieve";
 
@@ -593,7 +594,7 @@ function Index() {
         )}
         <header className="workspace-header flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-primary" />Kanał SMS<span className="text-border">/</span>{activeOffer.icon} {activeOffer.label}<span className="text-border">/</span>Przestrzeń robocza</p>
+            <p className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-primary" />{activeTab === "email" ? "Kanał e-mail" : "Kanał SMS"}<span className="text-border">/</span>{activeTab === "email" ? "🇺🇸 USA · Strony WWW" : `${activeOffer.icon} ${activeOffer.label}`}<span className="text-border">/</span>Przestrzeń robocza</p>
             <h2 className="text-2xl font-semibold">{destination?.label ?? (navigationGroup === "base" ? "Moja Baza" : navigationGroup === "analytics" ? "Analityka" : "Szablony & Wysyłka")}</h2>
           </div>
           <div className="flex items-center gap-3"><span className="hidden text-xs tabular-nums text-muted-foreground sm:block">{leads.length} kontaktów</span><SentCounterBadge /></div>
@@ -609,7 +610,8 @@ function Index() {
             )}
             <SearchTab onGoToTab={setActiveTab} remoteCommand={remoteCmd} />
           </TabsContent>
-          <TabsContent value="sniper" forceMount className="data-[state=inactive]:hidden"><SniperTab /></TabsContent>
+          <TabsContent value="sniper" forceMount className="data-[state=inactive]:hidden"><SniperWorkspace onGo={setActiveTab} /></TabsContent>
+          <TabsContent value="email"><EmailOutreach /></TabsContent>
           <TabsContent value="base"><BaseTab /></TabsContent>
           <TabsContent value="calls"><CallListTab /></TabsContent>
           <TabsContent value="offer"><OfferTab /></TabsContent>
