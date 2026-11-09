@@ -207,7 +207,11 @@ import {
   type BulkResult,
 } from "@/lib/bulk-send";
 import { SmsSpeedPanel } from '@/components/sms-speed-panel';
-import { SniperTab } from "@/components/sniper-tab";
+import { SniperWorkspace } from "@/components/sniper-workspace";
+import { EmailOutreach } from "@/components/email-outreach";
+import { DataStoreCard } from "@/components/data-store-card";
+import { offerOf, readOfferPrice, useOfferSettings } from "@/lib/offer-settings";
+import { offerMessageForRow } from "@/lib/sniper-sieve";
 
 
 export const Route = createFileRoute("/")({
@@ -547,6 +551,7 @@ function Index() {
   // Monitor w tle (co 5 min) zgłasza nowe odpowiedzi — odświeżamy listę.
   const rootQueryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("search");
+  const { offer, meta: activeOffer } = useOfferSettings();
   useEffect(() => {
     const lf = (window as unknown as { leadfinder?: { onLeadsChanged?: (cb: () => void) => () => void } }).leadfinder;
     return lf?.onLeadsChanged?.(() => rootQueryClient.invalidateQueries({ queryKey: ["leads"] }));
@@ -590,7 +595,7 @@ function Index() {
         )}
         <header className="workspace-header flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-primary" />Kanał SMS<span className="text-border">/</span>Przestrzeń robocza</p>
+            <p className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground"><span className="size-1.5 rounded-full bg-primary" />{activeTab === "email" ? "Kanał e-mail" : "Kanał SMS"}<span className="text-border">/</span>{activeTab === "email" ? "🇺🇸 USA · Strony WWW" : `${activeOffer.icon} ${activeOffer.label}`}<span className="text-border">/</span>Przestrzeń robocza</p>
             <h2 className="text-2xl font-semibold">{destination?.label ?? (navigationGroup === "base" ? "Moja Baza" : navigationGroup === "analytics" ? "Analityka" : "Szablony & Wysyłka")}</h2>
           </div>
           <div className="flex items-center gap-3"><span className="hidden text-xs tabular-nums text-muted-foreground sm:block">{leads.length} kontaktów</span><SentCounterBadge /></div>
@@ -598,9 +603,16 @@ function Index() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="workspace-views">
           {subviews.length > 0 && <TabsList className="apple-segment mb-6 h-auto flex w-fit max-w-full flex-wrap">{subviews.map(view => <TabsTrigger key={view.id} value={view.id}>{view.label}</TabsTrigger>)}</TabsList>}
           <TabsContent value="search" forceMount className="data-[state=inactive]:hidden">
+            {offer === "video_ads" && (
+              <div role="note" className="apple-glass-panel mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/30 p-4 text-sm">
+                <span className="min-w-0 flex-1">🎬 Aktywna oferta: <strong>Reklamy wideo AI</strong>. Klasyczna wyszukiwarka szuka firm bez strony www. Klientów na reklamy wideo (firmy z budżetem reklamowym i mocnymi opiniami) najlepiej szukać w Snajperze.</span>
+                <Button size="sm" variant="secondary" onClick={() => setActiveTab("sniper")}>Otwórz Snajpera</Button>
+              </div>
+            )}
             <SearchTab onGoToTab={setActiveTab} remoteCommand={remoteCmd} />
           </TabsContent>
-          <TabsContent value="sniper" forceMount className="data-[state=inactive]:hidden"><SniperTab /></TabsContent>
+          <TabsContent value="sniper" forceMount className="data-[state=inactive]:hidden"><SniperWorkspace onGo={setActiveTab} /></TabsContent>
+          <TabsContent value="email"><EmailOutreach /></TabsContent>
           <TabsContent value="base"><BaseTab /></TabsContent>
           <TabsContent value="calls"><CallListTab /></TabsContent>
           <TabsContent value="offer"><OfferTab /></TabsContent>
@@ -615,6 +627,7 @@ function Index() {
           <TabsContent value="message"><MessageTab /></TabsContent>
           <TabsContent value="settings">
             <section className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6"><div><h3 className="text-lg font-semibold">Widget pulpitowy</h3><p className="mt-1 text-sm text-muted-foreground">LeadFinder Pro</p></div><Button variant="outline" onClick={() => void openDesktopWidget().catch(() => toast.error("Nie udało się otworzyć widgetu."))}><ExternalLink />Otwórz Widget</Button></section>
+            <DataStoreCard />
             <SettingsTab />
           </TabsContent>
         </Tabs>
@@ -1888,6 +1901,11 @@ function BulkSendDialog({ leads }: { leads: LeadRow[] }) {
     })
     .slice(0, settings.dailyLimit)
     .map((lead) => {
+      // Leady pod reklamy wideo dostają szablon oferty wideo, a nie diagnozę strony.
+      if (offerOf(lead) === "video_ads") {
+        const msg = offerMessageForRow(lead, { price: readOfferPrice("video_ads") });
+        return { lead, body: msg.body, signature: msg.signature, type: null, templateId: msg.templateId };
+      }
       // Ruter szablonów: wybór treści wg diagnozy strony leada.
       const vars = leadVars(lead);
       const { body, signature, type } = buildIssueMessage(issueTemplates, issueTypeOf(lead), {
@@ -1895,14 +1913,18 @@ function BulkSendDialog({ leads }: { leads: LeadRow[] }) {
         miasto: lead.miasto ?? "",
         branza: lead.nisza || lead.kategoria || "",
       });
-      return { lead, body, signature, type };
+      return { lead, body, signature, type, templateId: ISSUE_META[type].label };
     });
 
   if (!isDesktop) return null;
 
   const total = items.length;
   const typeCounts: Record<WebsiteIssueType, number> = { NO_WEBSITE: 0, EXPIRED_OR_ERROR: 0, NO_SSL: 0, NO_MOBILE: 0, OLX_NO_WEBSITE: 0 };
-  items.forEach((i) => typeCounts[i.type]++);
+  let videoCount = 0;
+  items.forEach((i) => {
+    if (i.type) typeCounts[i.type]++;
+    else videoCount++;
+  });
   const skipped = skippedSent.length + skippedDuplicate.length;
 
   const start = async () => {
@@ -1930,7 +1952,7 @@ function BulkSendDialog({ leads }: { leads: LeadRow[] }) {
         id: i.lead.id,
         phone: (i.lead.telefon ?? '').replace(/\s+/g, ""),
         body: i.body,
-        templateId: ISSUE_META[i.type].label,
+        templateId: i.templateId,
         signature: i.signature,
       })),
       // Postęp tylko odświeża listę w okienku — licznik rusza po zakończeniu wysyłki.
@@ -1968,8 +1990,8 @@ function BulkSendDialog({ leads }: { leads: LeadRow[] }) {
         sms_sent_at: new Date().toISOString(),
         // Atrybucja: dokładna treść, szablon i kombinacja Spintax.
         sms_exact_text: item?.body ?? null,
-        sms_template_id: item ? ISSUE_META[item.type].label : null,
-        website_issue_type: item?.type ?? null,
+        sms_template_id: item?.templateId ?? null,
+        ...(item?.type ? { website_issue_type: item.type } : {}),
         sms_combination_signature: item?.signature || null,
       });
     }
@@ -2015,9 +2037,10 @@ function BulkSendDialog({ leads }: { leads: LeadRow[] }) {
             <span className="mb-2 block rounded-xl bg-background/40 p-2 text-foreground">
               Do wysłania łącznie: {total} SMS
               {total > 0 &&
-                ` (w tym: ${ISSUE_TYPES.filter((t) => typeCounts[t] > 0)
-                  .map((t) => `${typeCounts[t]}x ${ISSUE_META[t].short}`)
-                  .join(", ")})`}
+                ` (w tym: ${[
+                  ...ISSUE_TYPES.filter((t) => typeCounts[t] > 0).map((t) => `${typeCounts[t]}x ${ISSUE_META[t].short}`),
+                  ...(videoCount > 0 ? [`${videoCount}x Reklama wideo AI`] : []),
+                ].join(", ")})`}
             </span>
             Wysyłka w tle: {total}{" "}
             {total === 1 ? "wiadomość" : "wiadomości"} po kolei, średnio co ~
@@ -2681,7 +2704,7 @@ function BaseTab() {
                       </Button>
                       <MessageButton
                         phone={lead.telefon}
-                        vars={leadVars(lead)}
+                        vars={leadVars(lead)} bodyOverride={videoBody(lead)}
                         meta={leadMeta(lead)}
                         leadId={lead.id}
                         sentAt={lead.sms_sent_at ?? null}
@@ -2739,7 +2762,7 @@ function BaseTab() {
                           <span className="inline-flex items-center gap-2">
                             <PhoneMessageLink
                               phone={lead.telefon}
-                              vars={leadVars(lead)}
+                              vars={leadVars(lead)} bodyOverride={videoBody(lead)}
                               meta={leadMeta(lead)}
                               leadId={lead.id}
                               sentAt={lead.sms_sent_at ?? null}
@@ -2820,7 +2843,7 @@ function CallListTab() {
                 <p className="text-sm text-muted-foreground">
                   {lead.telefon ? (
                     <span className="inline-flex flex-wrap items-center gap-2">
-                      <PhoneMessageLink phone={lead.telefon} vars={leadVars(lead)} meta={leadMeta(lead)} />
+                      <PhoneMessageLink phone={lead.telefon} vars={leadVars(lead)} bodyOverride={videoBody(lead)} meta={leadMeta(lead)} />
                       <PhoneLine phone={lead.telefon} />
                     </span>
                   ) : (
@@ -2834,7 +2857,7 @@ function CallListTab() {
                         <Phone className="mr-2 size-4" /> Zadzwoń
                       </a>
                     </Button>
-                    <MessageButton phone={lead.telefon} vars={leadVars(lead)} meta={leadMeta(lead)} />
+                    <MessageButton phone={lead.telefon} vars={leadVars(lead)} bodyOverride={videoBody(lead)} meta={leadMeta(lead)} />
                   </>
                 )}
 
@@ -2943,7 +2966,7 @@ function OfferCard({ lead, sent }: { lead: LeadRow; sent?: boolean }) {
                 <Phone className="mr-2 size-4" /> Zadzwoń
               </a>
             </Button>
-            <MessageButton phone={lead.telefon} vars={leadVars(lead)} meta={leadMeta(lead)} />
+            <MessageButton phone={lead.telefon} vars={leadVars(lead)} bodyOverride={videoBody(lead)} meta={leadMeta(lead)} />
           </>
         )}
         {sent ? (
@@ -3048,6 +3071,13 @@ function leadMeta(lead: LeadRow) {
     miasto: lead.miasto ?? null,
     adres: lead.adres ?? null,
   };
+}
+
+/** Treść SMS-a dla leada pod reklamy wideo; dla stron www zwraca undefined (ogólny szablon). */
+function videoBody(lead: LeadRow): string | undefined {
+  return offerOf(lead) === "video_ads"
+    ? offerMessageForRow(lead, { price: readOfferPrice("video_ads") }).body
+    : undefined;
 }
 
 function leadVars(lead: LeadRow) {
@@ -3190,15 +3220,18 @@ function PhoneMessageLink({
   meta,
   leadId,
   sentAt,
+  bodyOverride,
 }: {
   phone: string;
   vars: Parameters<typeof fillTemplate>[1];
   meta?: Parameters<typeof recordSentMessage>[0];
   leadId?: string;
   sentAt?: string | null;
+  /** Gotowa treść (np. oferta wideo) zamiast ogólnego szablonu. */
+  bodyOverride?: string | undefined;
 }) {
   const { template, neutral } = useMessageTemplate();
-  const href = useSmsHref(phone, buildMessage(template, neutral, vars));
+  const href = useSmsHref(phone, bodyOverride ?? buildMessage(template, neutral, vars));
   const register = useManualSend(leadId, sentAt);
   return (
     <a
@@ -3221,15 +3254,18 @@ function MessageButton({
   meta,
   leadId,
   sentAt,
+  bodyOverride,
 }: {
   phone: string;
   vars: Parameters<typeof fillTemplate>[1];
   meta?: Parameters<typeof recordSentMessage>[0];
   leadId?: string;
   sentAt?: string | null;
+  /** Gotowa treść (np. oferta wideo) zamiast ogólnego szablonu. */
+  bodyOverride?: string | undefined;
 }) {
   const { template, neutral } = useMessageTemplate();
-  const href = useSmsHref(phone, buildMessage(template, neutral, vars));
+  const href = useSmsHref(phone, bodyOverride ?? buildMessage(template, neutral, vars));
   const register = useManualSend(leadId, sentAt);
   return (
     <Button

@@ -39,7 +39,7 @@ describe('OLX full result collection', () => {
     const context = vm.createContext({ URLSearchParams, Set, Math, String, Number,
       collectOffers: async () => phones.map((_, i) => row(i)),
       offerDetail, olxApiGet: async () => null, olxReadDom: async () => '',
-      cacheDb: () => ({ prepare: () => ({ all: () => [{ phone: '+48512345678' }] }) }),
+      blockDb: () => ({ prepare: () => ({ all: () => [{ phone: '+48512345678' }] }) }),
       blacklistKey: (raw: string) => String(raw).replace(/\D/g, '').slice(-9),
       findMobileInText: () => phones.shift(), validatePolishMobile: validate,
       olxLinksInDescription: () => ({ ownSite: null, socialOnly: false }), sleep: async () => {}, OLX_CLICK_BUDGET: 50,
