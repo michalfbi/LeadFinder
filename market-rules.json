@@ -1,0 +1,107 @@
+{
+  "_comment": "Rozpoznanie rynku (electron/market.cjs). Jedno źródło prawdy dla kodów branż, źródeł danych i wzoru na potencjał. Liczby firm pochodzą z bezpłatnego API urzędu statystycznego USA (Census), odsetek trafień wyłącznie z własnych próbek programu.",
+  "census": {
+    "base": "https://api.census.gov/data",
+    "cbpYear": 2023,
+    "cbpFallbackYear": 2022,
+    "populationYear": 2023,
+    "industryVariable": "NAICS2017",
+    "geography": "metropolitan statistical area/micropolitan statistical area",
+    "keySignupUrl": "https://api.census.gov/data/key_signup.html",
+    "pauseMs": 400,
+    "timeoutMs": 30000
+  },
+  "hyphenatedCities": [
+    "Winston-Salem",
+    "Wilkes-Barre",
+    "Milton-Freewater",
+    "Sedro-Woolley",
+    "Fuquay-Varina"
+  ],
+  "totalNaics": "00",
+  "competitionNaics": {
+    "541511": "Programowanie na zamówienie, w tym projektowanie stron",
+    "541430": "Studia graficzne",
+    "541810": "Agencje reklamowe",
+    "541613": "Doradztwo marketingowe"
+  },
+  "niches": {
+    "roofing": { "naics": "238160", "exact": true },
+    "plumbing": {
+      "naics": "238220",
+      "exact": false,
+      "note": "Kategoria wspólna dla hydraulików i firm od klimatyzacji."
+    },
+    "hvac": {
+      "naics": "238220",
+      "exact": false,
+      "note": "Kategoria wspólna dla hydraulików i firm od klimatyzacji."
+    },
+    "electrician": { "naics": "238210", "exact": true },
+    "landscaping": {
+      "naics": "561730",
+      "exact": false,
+      "note": "Kategoria obejmuje też wycinkę drzew."
+    },
+    "fencing": {
+      "naics": "238990",
+      "exact": false,
+      "note": "Szeroka kategoria „pozostali wykonawcy specjalistyczni”."
+    },
+    "concrete": {
+      "naics": "238110",
+      "exact": false,
+      "note": "Fundamenty i konstrukcje betonowe; podjazdy bywają liczone gdzie indziej."
+    },
+    "tree-service": {
+      "naics": "561730",
+      "exact": false,
+      "note": "Kategoria wspólna z ogrodami i trawnikami."
+    },
+    "pressure-washing": {
+      "naics": "561790",
+      "exact": false,
+      "note": "Szeroka kategoria „pozostałe usługi dla budynków”."
+    },
+    "painting": { "naics": "238320", "exact": true },
+    "flooring": { "naics": "238330", "exact": true },
+    "garage-door": {
+      "naics": "238350",
+      "exact": false,
+      "note": "Kategoria „stolarka wykończeniowa”, bramy garażowe to jej część."
+    },
+    "pest-control": { "naics": "561710", "exact": true },
+    "septic": { "naics": "562991", "exact": true },
+    "towing": { "naics": "488410", "exact": true },
+    "auto-detailing": {
+      "naics": "811192",
+      "exact": false,
+      "note": "Kategoria wspólna z myjniami."
+    },
+    "junk-removal": {
+      "naics": "562119",
+      "exact": false,
+      "note": "Szeroka kategoria „pozostały wywóz odpadów”."
+    },
+    "remodeling": { "naics": "236118", "exact": true }
+  },
+  "scoring": {
+    "_comment": "potencjał = liczba firm × odsetek trafień × mnożnik konkurencji. Trafienie = firma ze słabą, ale działającą stroną i znalezionym adresem e-mail (tylko do takich program w USA może napisać).",
+    "assumedHitRate": 0.1,
+    "assumedStrength": 4,
+    "poolStrength": 12,
+    "interval": [0.1, 0.9],
+    "competitionFactor": { "low": 1.15, "mid": 1, "high": 0.85 },
+    "minFirms": 20,
+    "maxPerGeo": 3,
+    "verifiedAfterSent": 20,
+    "probeStaleDays": 120
+  },
+  "positiveReplies": ["zainteresowany", "cena", "pytanie"],
+  "limits": [
+    "Census liczy firmy zatrudniające pracowników. Jednoosobowe działalności nie są ujęte, więc prawdziwa liczba małych firm jest większa.",
+    "Dane Census są z 2023 roku.",
+    "Konkurencja to liczba lokalnych agencji i studiów na 1000 firm. Agencje sprzedające zdalnie nie są w niej widoczne.",
+    "Próbka z Map pokazuje firmy, które Google wyświetla najwyżej, więc najsłabiej widoczne firmy są w niej niedoreprezentowane."
+  ]
+}

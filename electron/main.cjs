@@ -5,6 +5,8 @@ const { app, BrowserWindow, ipcMain, Menu, Notification, powerSaveBlocker, safeS
 const { secondaryDisplay, animateWindowToSecondaryDisplay } = require("./window-motion.cjs");
 const { createAutopilot } = require("./autopilot.cjs");
 const { createOutreach } = require("./outreach.cjs");
+const { createMarket } = require("./market.cjs");
+const countryRules = require("../country-rules.json");
 const { collectOffers, offerDetail } = require("./olx-results.cjs");
 const { createSniperScanner } = require("./sniper-audit.cjs");
 const { openStoreSafely, LEAD_FILES, LEDGER_FILES } = require("./store.cjs");
@@ -1283,7 +1285,46 @@ ipcMain.handle("sniper:runDeepScan", async (event, params) => {
   if (sniperRunning) return { ok: false, error: "Skan Snajpera już trwa — poczekaj na wynik." };
   sniperRunning = true;
   try {
-    return await sniperScanner.runDeepScan(event, params);
+    const result = await sniperScanner.runDeepScan(event, params);
+    // Każdy skan USA jest przy okazji próbką dla rozpoznania rynku. Błąd zapisu nie może zepsuć skanu.
+    if (result?.ok && params?.market === "US") {
+      try { market.recordProbe({ nicheId: params.nicheId, city: params.city, raw: result.raw }); } catch { /* baza niedostępna */ }
+    }
+    return result;
+  } finally {
+    sniperRunning = false;
+  }
+});
+
+// Rozpoznanie rynku: liczba firm z Census (bezpłatnie), własne próbki z Map i wyniki własnych kampanii.
+const market = createMarket({
+  db: () => { const h = dataStore(); return h.state === "sqlite" ? h.store.db : null; },
+  read: (name, fallback) => readJson(dataFile(name), fallback),
+  write: (name, value) => writeJson(dataFile(name), value),
+  encrypt: t => { if (!safeStorage.isEncryptionAvailable()) throw new Error("Szyfrowanie klucza niedostępne."); return safeStorage.encryptString(t).toString("base64"); },
+  decrypt: t => safeStorage.decryptString(Buffer.from(t, "base64")),
+  fetchImpl: (url, init) => fetch(url, init),
+  emailLeads: () => emailEngine?.list() ?? [],
+});
+ipcMain.handle("market:settings", () => market.settings());
+ipcMain.handle("market:configure", (_e, value) => market.configure(value));
+ipcMain.handle("market:test", () => market.test());
+ipcMain.handle("market:ranking", (_e, filter) => market.ranking(filter));
+ipcMain.handle("market:refresh", event =>
+  market.refresh(data => { try { event.sender.send("market-progress", data); } catch { /* okno zamknięte */ } }));
+// Jedna próbka na kliknięcie: zwykły skan Map dla niszy i miasta, bez dodawania firm do bazy.
+ipcMain.handle("market:probe", async (event, payload) => {
+  const niche = countryRules.markets.US.niches.find(n => n.id === payload?.nicheId);
+  const city = String(payload?.city ?? "").trim();
+  if (!niche || !/^.+,\s*[A-Za-z]{2}$/.test(city)) throw new Error("Wybierz niszę i miasto ze stanem, np. Tulsa, OK.");
+  if (sniperRunning) throw new Error("Skan już trwa. Poczekaj na wynik.");
+  sniperRunning = true;
+  try {
+    const result = await sniperScanner.runDeepScan(event, { market: "US", nicheId: niche.id, keyword: niche.query, city, sources: { maps: true, olx: false, ceidg: false } });
+    if (!result?.ok) throw new Error(result?.error || "Mapy nie zwróciły firm.");
+    const probe = market.recordProbe({ nicheId: niche.id, city, raw: result.raw });
+    if (!probe) throw new Error("Skan nie zwrócił firm do policzenia.");
+    return probe;
   } finally {
     sniperRunning = false;
   }

@@ -135,6 +135,24 @@ contextBridge.exposeInMainWorld("leadfinder", {
     events: (kind, id) => ipcRenderer.invoke("store:events", kind, id),
   },
 
+  // Rozpoznanie rynku: liczba firm z Census, próbki z Map i wyniki kampanii.
+  market: {
+    settings: () => ipcRenderer.invoke("market:settings"),
+    configure: (value) => ipcRenderer.invoke("market:configure", value),
+    test: () => ipcRenderer.invoke("market:test"),
+    ranking: (filter) => ipcRenderer.invoke("market:ranking", filter),
+    refresh: (onProgress) => {
+      const listener = (_e, data) => { if (onProgress) onProgress(data); };
+      ipcRenderer.on("market-progress", listener);
+      return ipcRenderer.invoke("market:refresh").finally(() => ipcRenderer.removeListener("market-progress", listener));
+    },
+    probe: (payload, onProgress) => {
+      const listener = (_e, data) => { if (onProgress) onProgress(data); };
+      ipcRenderer.on("sniper-progress", listener);
+      return ipcRenderer.invoke("market:probe", payload).finally(() => ipcRenderer.removeListener("sniper-progress", listener));
+    },
+  },
+
   // Wirtualny świat: sprawdzian programu bez prawdziwej wysyłki.
   simulation: {
     run: (seed) => ipcRenderer.invoke("simulation:run", seed),

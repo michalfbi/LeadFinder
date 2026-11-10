@@ -124,6 +124,21 @@ function analyzeHtml(html) {
   };
 }
 
+/** Strona, do której nie ma się o co przyczepić: działa, ma SSL, wersję mobilną, jest szybka i aktualna. */
+function isModernSite(a) {
+  return Boolean(
+    a &&
+      a.httpStatus !== null &&
+      a.httpStatus < 400 &&
+      a.hasSsl &&
+      a.hasMobileViewport &&
+      a.responseTimeMs !== null &&
+      a.responseTimeMs < rules.thresholds.fastSiteMs &&
+      (a.copyrightYear === null ||
+        a.copyrightYear >= rules.thresholds.outdatedBeforeYear),
+  );
+}
+
 function errorCode(err) {
   return String(err?.cause?.code ?? err?.code ?? err?.name ?? "");
 }
@@ -621,16 +636,7 @@ function createSniperScanner(deps) {
       // Poza Polską kontaktujemy się e-mailem: szukamy adresu na stronie firmy.
       // Pomijamy nowoczesne strony (sito i tak je odrzuci) i strony, które nie działają.
       if (abroad) {
-        const modern = (a) =>
-          a &&
-          a.httpStatus !== null &&
-          a.httpStatus < 400 &&
-          a.hasSsl &&
-          a.hasMobileViewport &&
-          a.responseTimeMs !== null &&
-          a.responseTimeMs < rules.thresholds.fastSiteMs &&
-          (a.copyrightYear === null ||
-            a.copyrightYear >= rules.thresholds.outdatedBeforeYear);
+        const modern = isModernSite;
         const reachable = raw.filter((r) => {
           if (
             !r.website ||
@@ -737,6 +743,7 @@ module.exports = {
   isCorporateName,
   isSocialUrl,
   isFreeBuilderUrl,
+  isModernSite,
   hostOf,
   mapLimit,
 };
