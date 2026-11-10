@@ -135,6 +135,11 @@ contextBridge.exposeInMainWorld("leadfinder", {
     events: (kind, id) => ipcRenderer.invoke("store:events", kind, id),
   },
 
+  // Wirtualny świat: sprawdzian programu bez prawdziwej wysyłki.
+  simulation: {
+    run: (seed) => ipcRenderer.invoke("simulation:run", seed),
+  },
+
   // Snajper Top 50: Mapy/OLX/CEIDG + audyt HTTP/TLS/DOM + wolne domeny .pl.
   sniper: {
     runDeepScan: (params, onProgress) => {

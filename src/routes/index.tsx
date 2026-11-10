@@ -212,6 +212,7 @@ import { EmailOutreach } from "@/components/email-outreach";
 import { InboxView } from "@/components/inbox-view";
 import { listInbox, onInboxChange } from "@/lib/inbox-store";
 import { DataStoreCard } from "@/components/data-store-card";
+import { SimulationCard } from "@/components/simulation-card";
 import { offerOf, readOfferPrice, useOfferSettings } from "@/lib/offer-settings";
 import { offerMessageForRow } from "@/lib/sniper-sieve";
 
@@ -639,6 +640,7 @@ function Index() {
           <TabsContent value="settings">
             <section className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6"><div><h3 className="text-lg font-semibold">Widget pulpitowy</h3><p className="mt-1 text-sm text-muted-foreground">LeadFinder Pro</p></div><Button variant="outline" onClick={() => void openDesktopWidget().catch(() => toast.error("Nie udało się otworzyć widgetu."))}><ExternalLink />Otwórz Widget</Button></section>
             <DataStoreCard />
+            <SimulationCard />
             <SettingsTab />
           </TabsContent>
         </Tabs>

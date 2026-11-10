@@ -79,12 +79,16 @@ function dedupeEmail(rows,existing,blocked=[]) {
 }
 const templateType=l=>l.email_source_portal==='CEIDG_EMAIL'?'CEIDG_START':['EXPIRED_OR_ERROR','NO_SSL'].includes(l.website_issue_type)?l.website_issue_type:'NO_WEBSITE';
 function createEmailEngine(d) {
+ // Zegar i połączenia są wstrzykiwane, żeby symulacja (electron/simulation.cjs) mogła podstawić wirtualny czas i wirtualną pocztę.
+ const clock=()=>d.now?new Date(d.now()):new Date();
+ const mkTransport=d.createTransport||(o=>nodemailer.createTransport(o));
+ const mkImap=d.createImap||(o=>new ImapFlow(o));
  const file=d.file('email-leads.json'),configFile=d.file('email-settings.json');
  const list=()=>d.read(file,[]).filter(r=>r.channel_type==='EMAIL');
  const write=rows=>{d.write(file,rows);d.changed();};
  const db=()=>{const c=d.db();if(!c)throw new Error('Lista blokad e-mail jest niedostępna.');c.exec('CREATE TABLE IF NOT EXISTS email_blacklist (email TEXT PRIMARY KEY, added_at INTEGER NOT NULL)');return c;};
  const blocked=()=>db().prepare('SELECT email FROM email_blacklist').all().map(r=>r.email);
- const insert=rows=>{const fresh=dedupeEmail(rows,list(),blocked());write([...list(),...fresh.map(r=>({...r,id:r.id||randomUUID(),channel_type:'EMAIL',telefon:null,status:'nowy',created_at:new Date().toISOString(),email_sent_at:null,email_domain_type:domainType(r.email),market:marketOf(r)}))]);return {added:fresh.length,skipped:rows.length-fresh.length};};
+ const insert=rows=>{const fresh=dedupeEmail(rows,list(),blocked());write([...list(),...fresh.map(r=>({...r,id:r.id||randomUUID(),channel_type:'EMAIL',telefon:null,status:'nowy',created_at:clock().toISOString(),email_sent_at:null,email_domain_type:domainType(r.email),market:marketOf(r)}))]);return {added:fresh.length,skipped:rows.length-fresh.length};};
  const update=(id,patch)=>{const allowed=['status','notatki','deal_value','engaged_at','closed_at'];write(list().map(r=>r.id===id?{...r,...Object.fromEntries(allowed.filter(k=>k in patch).map(k=>[k,patch[k]]))}:r));};
  const settings=()=>{const s=d.read(configFile,{});const {encryptedPassword,encryptedImapPassword,...publicFields}=s;return {...publicFields,passwordConfigured:!!encryptedPassword,imapPasswordConfigured:!!encryptedImapPassword};};
  const configure=value=>{
@@ -98,7 +102,7 @@ function createEmailEngine(d) {
   const s=d.read(configFile,{}),port=Number(s.port||465);
   if(!s.host||!s.user||!s.encryptedPassword||!normalizeEmail(s.from)||!s.company||!s.address)throw new Error('Uzupełnij SMTP, nadawcę i dane firmy w ustawieniach.');
   if(![465,587].includes(port))throw new Error('Użyj SMTP TLS: port 465 lub 587.');
-  return {s,t:nodemailer.createTransport({host:s.host,port,secure:port===465,requireTLS:port!==465,auth:{user:s.user,pass:d.decrypt(s.encryptedPassword)},connectionTimeout:15000,socketTimeout:30000,logger:false,debug:false})};
+  return {s,t:mkTransport({host:s.host,port,secure:port===465,requireTLS:port!==465,auth:{user:s.user,pass:d.decrypt(s.encryptedPassword)},connectionTimeout:15000,socketTimeout:30000,logger:false,debug:false})};
  };
  function build(l) {
   // Treść przygotowana w Snajperze (np. e-mail po angielsku) idzie bez zmian: podgląd = wysyłka.
@@ -109,7 +113,7 @@ function createEmailEngine(d) {
  }
  let queue={running:false,paused:false,cancel:false,total:0,done:0,sent:0,error:null};
  const notify=()=>d.changed();
- const wait=async ms=>{const end=Date.now()+ms;while(Date.now()<end&&!queue.cancel){while(queue.paused&&!queue.cancel)await d.sleep(500);await d.sleep(Math.min(500,Math.max(0,end-Date.now())));}};
+ const wait=async ms=>{const end=clock().getTime()+ms;while(clock().getTime()<end&&!queue.cancel){while(queue.paused&&!queue.cancel)await d.sleep(500);await d.sleep(Math.min(500,Math.max(0,end-clock().getTime())));}};
  async function sendBulk(ids,consent=false,prepared={}) {
   if(!consent)throw new Error('Potwierdź uprawnienie i wymaganą zgodę na kontakt marketingowy lub oświadczenie o zgodności dla danego rynku. Sama stopka nie zapewnia zgodności.');
   if(queue.running)throw new Error('Kolejka e-mail już działa.');
@@ -126,18 +130,18 @@ function createEmailEngine(d) {
     if(ledger[email]){results.push({id,ok:false,skipped:true});queue.done++;notify();continue;}
     // Reguły kraju: godziny pracy w strefie odbiorcy i dzienny limit (rozgrzewanie domeny).
     const market=marketOf(l),rule=emailRules(market);
-    if(!inSendWindow(market,l.timezone,d.now?d.now():new Date())){results.push({id,ok:false,skipped:true,reason:'outside-window'});queue.done++;notify();continue;}
-    const today=new Date().toDateString(),limit=Number(s.dailyLimit)>0?Number(s.dailyLimit):rule.dailyLimit;
+    if(!inSendWindow(market,l.timezone,clock())){results.push({id,ok:false,skipped:true,reason:'outside-window'});queue.done++;notify();continue;}
+    const today=clock().toDateString(),limit=Number(s.dailyLimit)>0?Number(s.dailyLimit):rule.dailyLimit;
     if(list().filter(r=>marketOf(r)===market&&r.email_sent_at&&new Date(r.email_sent_at).toDateString()===today).length>=limit){results.push({id,ok:false,skipped:true,reason:'daily-limit'});queue.done++;notify();continue;}
-    const message=prepared[id]||build(l);const at=new Date().toISOString();
+    const message=prepared[id]||build(l);const at=clock().toISOString();
     ledger[email]=at;d.write(d.file('email-ledger.json'),ledger);
     write(list().map(r=>r.id===id?{...r,email_reserved_at:at,email_subject_used:message.subject,email_exact_text:message.body,email_combination_signature:message.signature}:r));
     try {
      const result=await limiter.schedule(()=>t.sendMail({from:{name:s.senderName||s.company,address:s.from},to:email,subject:message.subject,text:`${message.body}\n\n--\n${buildFooter(market,s)}`,headers:{'List-Unsubscribe':`<mailto:${s.from}?subject=${encodeURIComponent(rule.unsubscribeSubject)}>`}}));
      if(!result.accepted?.some(a=>normalizeEmail(a)===email))throw new Error('Serwer SMTP nie zaakceptował odbiorcy.');
-     write(list().map(r=>r.id===id?{...r,email_sent_at:new Date().toISOString(),email_message_id:result.messageId,status:'wyslano_wiadomosc',email_error:null}:r));results.push({id,ok:true});queue.sent++;
+     write(list().map(r=>r.id===id?{...r,email_sent_at:clock().toISOString(),email_message_id:result.messageId,status:'wyslano_wiadomosc',email_error:null}:r));results.push({id,ok:true});queue.sent++;
     }catch(e){queue.error=String(e.message||e);write(list().map(r=>r.id===id?{...r,status:'blad_wysylki',email_error:queue.error}:r));results.push({id,ok:false,error:queue.error});}
-    queue.done++;notify();if(queue.done<queue.total&&!queue.cancel)await wait(60000+Math.floor(Math.random()*60001));
+    queue.done++;notify();if(queue.done<queue.total&&!queue.cancel)await wait(60000+Math.floor((d.random||Math.random)()*60001));
    }
   }finally{t.close();queue.running=false;notify();}
   return results;
@@ -146,9 +150,9 @@ function createEmailEngine(d) {
  async function syncReplies(){
   const s=d.read(configFile,{});if(!s.imapHost||!s.imapUser)throw new Error('Uzupełnij opcjonalny IMAP w ustawieniach.');
   const secret=s.encryptedImapPassword||s.encryptedPassword;if(!secret)throw new Error('Brak hasła IMAP.');
-  const client=new ImapFlow({host:s.imapHost,port:Number(s.imapPort||993),secure:true,auth:{user:s.imapUser,pass:d.decrypt(secret)},logger:false,connectionTimeout:15000});let updated=0,blockedCount=0;const replies=[];
+  const client=mkImap({host:s.imapHost,port:Number(s.imapPort||993),secure:true,auth:{user:s.imapUser,pass:d.decrypt(secret)},logger:false,connectionTimeout:15000});let updated=0,blockedCount=0;const replies=[];
   try{await client.connect();const lock=await client.getMailboxLock('INBOX');try{
-   const sent=list().filter(r=>r.email_sent_at);const since=new Date(Math.min(...sent.map(r=>Date.parse(r.email_sent_at)),Date.now()));
+   const sent=list().filter(r=>r.email_sent_at);const since=new Date(Math.min(...sent.map(r=>Date.parse(r.email_sent_at)),clock().getTime()));
    const uids=await client.search({since},{uid:true});
    if(!uids?.length)return {updated,blocked:blockedCount};
    for await(const msg of client.fetch(uids.slice(-200),{envelope:true,bodyParts:['TEXT']},{uid:true})){
@@ -158,7 +162,7 @@ function createEmailEngine(d) {
     const text=extractPlainText(raw,!/^--\S/m.test(raw)&&/=\r?\n|=[0-9A-F]{2}/.test(raw)?'quoted-printable':'');
     const reply=stripQuoted(text).slice(0,600);
     replies.push({lead,from,text,at:new Date(msg.envelope.date).getTime(),uid:msg.uid});
-    if(isRefusal(marketOf(lead),text)){db().prepare('INSERT OR IGNORE INTO email_blacklist VALUES (?,?)').run(from,Date.now());write(list().map(r=>r.id===lead.id?{...r,status:'zablokowany',email_reply_text:reply}:r));blockedCount++;}
+    if(isRefusal(marketOf(lead),text)){db().prepare('INSERT OR IGNORE INTO email_blacklist VALUES (?,?)').run(from,clock().getTime());write(list().map(r=>r.id===lead.id?{...r,status:'zablokowany',email_reply_text:reply}:r));blockedCount++;}
     else if(!lead.engaged_at){write(list().map(r=>r.id===lead.id?{...r,status:'odpisal',engaged_at:new Date(msg.envelope.date).toISOString(),email_reply_text:reply}:r));updated++;}
    }
   }finally{lock.release();}}finally{await client.logout().catch(()=>{});}
@@ -194,7 +198,7 @@ function createEmailEngine(d) {
    else{
     const pkd=params.pkd||(/stolar|mebl/i.test(niche)?'3102Z,3109Z,1623Z':/rachunk/i.test(niche)?'6920Z':/fotograf/i.test(niche)?'7420Z':/klima|ciepł/i.test(niche)?'4322Z':'');
     if(!pkd)warnings.push('CEIDG: wpisz kody PKD dla wybranej niszy.');
-    else{const result=await d.ceidg(`${d.ceidgBase}/firmy?${new URLSearchParams({pkd,wojewodztwo:params.voivodeship||area,status:'AKTYWNY',dataod:new Date(Date.now()-30*86400000).toISOString().slice(0,10),limit:'50'})}`,key);
+    else{const result=await d.ceidg(`${d.ceidgBase}/firmy?${new URLSearchParams({pkd,wojewodztwo:params.voivodeship||area,status:'AKTYWNY',dataod:new Date(clock().getTime()-30*86400000).toISOString().slice(0,10),limit:'50'})}`,key);
      if(!result.ok)warnings.push(result.error);
      else for(const f of (result.json.firmy||[]).slice(0,50)){
       let firm=f;if(!firm.email&&!firm.adresDzialalnosciElektronicznej&&firm.id){await d.sleep(400);const detail=await d.ceidg(`${d.ceidgBase}/firma/${encodeURIComponent(firm.id)}`,key);if(detail.ok)firm={...firm,...(detail.json.firma?.[0]||detail.json)};}
@@ -217,11 +221,11 @@ function createEmailEngine(d) {
    const subject=`Re: ${String(l.email_subject_used||l.email_prepared_subject||l.nazwa||'').replace(/^(re:\s*)+/i,'').replace(/[\r\n]+/g,' ')}`;
    const result=await t.sendMail({from:{name:s.senderName||s.company,address:s.from},to:email,subject,text:`${text}\n\n--\n${buildFooter(market,s)}`,headers:{'List-Unsubscribe':`<mailto:${s.from}?subject=${encodeURIComponent(emailRules(market).unsubscribeSubject)}>`},...(l.email_message_id?{inReplyTo:l.email_message_id,references:l.email_message_id}:{})});
    if(!result.accepted?.some(a=>normalizeEmail(a)===email))throw new Error('Serwer SMTP nie zaakceptował odbiorcy.');
-   write(list().map(r=>r.id===id?{...r,email_last_reply_at:new Date().toISOString()}:r));
+   write(list().map(r=>r.id===id?{...r,email_last_reply_at:clock().toISOString()}:r));
    return {messageId:result.messageId};
   }finally{t.close();}
  }
  const checkDomain=(domain,selector)=>checkSenderDomain(domain||String(d.read(configFile,{}).from||''),selector||d.read(configFile,{}).dkimSelector,d.dns||dns);
- return {reply,checkDomain,list,insert,update,remove:id=>write(list().filter(r=>r.id!==id)),settings,configure,harvest,sendBulk,test,syncReplies,build,blocked,blacklist:email=>{const e=normalizeEmail(email);if(!e)throw new Error('Niepoprawny e-mail.');db().prepare('INSERT OR IGNORE INTO email_blacklist VALUES (?,?)').run(e,Date.now());write(list().map(l=>l.email===e?{...l,status:'zablokowany'}:l));},status:()=>({...queue}),control:command=>{if(command==='pause')queue.paused=true;else if(command==='resume')queue.paused=false;else if(command==='cancel')queue.cancel=true;notify();return {...queue};}};
+ return {reply,checkDomain,list,insert,update,remove:id=>write(list().filter(r=>r.id!==id)),settings,configure,harvest,sendBulk,test,syncReplies,build,blocked,blacklist:email=>{const e=normalizeEmail(email);if(!e)throw new Error('Niepoprawny e-mail.');db().prepare('INSERT OR IGNORE INTO email_blacklist VALUES (?,?)').run(e,clock().getTime());write(list().map(l=>l.email===e?{...l,status:'zablokowany'}:l));},status:()=>({...queue}),control:command=>{if(command==='pause')queue.paused=true;else if(command==='resume')queue.paused=false;else if(command==='cancel')queue.cancel=true;notify();return {...queue};}};
 }
 module.exports={buildFooter,inSendWindow,stripQuoted,isRefusal,checkSenderDomain,createEmailEngine,normalizeEmail,domainType,extractEmails,spin,dedupeEmail,templateType};

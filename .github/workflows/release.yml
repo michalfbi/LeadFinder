@@ -76,6 +76,11 @@ jobs:
       - name: Testy
         run: npx vitest run
 
+      # Wirtualny świat: 5 symulacji obiegu wysyłka → odpowiedź → skrzynka na udawanej poczcie.
+      # Raport trafia do podsumowania przebiegu; złamana zasada zatrzymuje budowanie.
+      - name: Wirtualny świat (sprawdzian bez prawdziwej wysyłki)
+        run: node scripts/simulate.mjs
+
       - name: Zbuduj i spakuj aplikację
         env:
           APP_VERSION: ${{ steps.version.outputs.version }}

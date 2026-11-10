@@ -4,11 +4,11 @@
 const { app, BrowserWindow, ipcMain, Menu, Notification, powerSaveBlocker, safeStorage, screen, shell, nativeTheme } = require("electron");
 const { secondaryDisplay, animateWindowToSecondaryDisplay } = require("./window-motion.cjs");
 const { createAutopilot } = require("./autopilot.cjs");
-const { createEmailEngine } = require("./email.cjs");
+const { createOutreach } = require("./outreach.cjs");
 const { collectOffers, offerDetail } = require("./olx-results.cjs");
 const { createSniperScanner } = require("./sniper-audit.cjs");
 const { openStoreSafely, LEAD_FILES, LEDGER_FILES } = require("./store.cjs");
-const { createInbox, classifyRules, BLOCKING: BLOCKING_REPLIES } = require("./inbox.cjs");
+const { classifyRules, BLOCKING: BLOCKING_REPLIES } = require("./inbox.cjs");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -106,6 +106,20 @@ function writeJson(file, value) {
 const readSettings = () => ({ googleApiKey: "", ceidgApiKey: "", ...readJson(dataFile("settings.json"), {}) });
 const readLeads = () => readJson(dataFile("leads.json"), []);
 const writeLeads = (rows) => writeJson(dataFile("leads.json"), rows);
+
+// Wirtualny świat: sprawdzian na udawanej poczcie i udawanych firmach, w osobnym folderze tymczasowym.
+// Nie dotyka danych właściciela ani prawdziwej skrzynki (wszystkie połączenia są podstawione).
+let simulationRunning = false;
+ipcMain.handle("simulation:run", async (_event, seed) => {
+  if (simulationRunning) throw new Error("Sprawdzian już trwa.");
+  simulationRunning = true;
+  try {
+    const { runSimulation } = require("./simulation.cjs");
+    return await runSimulation({ seed: Math.max(1, Math.round(Number(seed)) || 1), guardNetwork: false });
+  } finally {
+    simulationRunning = false;
+  }
+});
 
 // Stan bazy danych dla widoku Ustawień.
 ipcMain.handle("store:status", () => {
@@ -2484,38 +2498,36 @@ function announceInboxMessage(m) {
 const localEvent = {sender: {send() {}, isDestroyed: () => true}};
 function initAutopilot() {
   const changed = () => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("autopilot:changed"); };
-  emailEngine = createEmailEngine({
-    file:dataFile,read:readJson,write:writeJson,db:blockDb,sleep,fetch:harvestFetch,
-    ceidg:ceidgGet,ceidgBase:CEIDG_BASE,ceidgKey:()=>readSettings().ceidgApiKey,
-    changed:()=>{for(const w of BrowserWindow.getAllWindows())if(!w.isDestroyed())w.webContents.send("email:changed");},
-    encrypt:t=>{if(!safeStorage.isEncryptionAvailable())throw new Error("Szyfrowanie skrzynki niedostępne.");return safeStorage.encryptString(t).toString("base64");},
-    decrypt:t=>safeStorage.decryptString(Buffer.from(t,"base64")),
-    templates:()=>{try{return JSON.parse(readJson(PREFS_FILE(),{})["leadfinder.email-templates"]||"{}");}catch{return {};}},
-    onReply:r=>inbox?.ingest({channel:"email",lead:r.lead,address:r.from,text:r.text,at:r.at,externalId:r.uid,outbound:r.lead.email_exact_text||r.lead.email_prepared_body}),
-    website:async (url,email)=>{
-      const domain=email.split("@")[1];
-      if(!url&&!['gmail.com','wp.pl','onet.pl','interia.pl','o2.pl','outlook.com','hotmail.com','yahoo.com'].includes(domain))url=`https://${domain}`;
-      if(!url)return "NO_WEBSITE";
-      try{const audit=await auditWebsiteHealth(url);if(!audit.isTargetLead)return "HEALTHY";return /ssl/i.test(audit.issueTag||"")?"NO_SSL":/wygas|błąd/i.test(audit.issueTag||"")?"EXPIRED_OR_ERROR":"UNKNOWN";}catch{return "UNKNOWN";}
+  ({ emailEngine, inbox } = createOutreach({
+    email: {
+      file:dataFile,read:readJson,write:writeJson,db:blockDb,sleep,fetch:harvestFetch,
+      ceidg:ceidgGet,ceidgBase:CEIDG_BASE,ceidgKey:()=>readSettings().ceidgApiKey,
+      changed:()=>{for(const w of BrowserWindow.getAllWindows())if(!w.isDestroyed())w.webContents.send("email:changed");},
+      encrypt:t=>{if(!safeStorage.isEncryptionAvailable())throw new Error("Szyfrowanie skrzynki niedostępne.");return safeStorage.encryptString(t).toString("base64");},
+      decrypt:t=>safeStorage.decryptString(Buffer.from(t,"base64")),
+      templates:()=>{try{return JSON.parse(readJson(PREFS_FILE(),{})["leadfinder.email-templates"]||"{}");}catch{return {};}},
+      website:async (url,email)=>{
+        const domain=email.split("@")[1];
+        if(!url&&!['gmail.com','wp.pl','onet.pl','interia.pl','o2.pl','outlook.com','hotmail.com','yahoo.com'].includes(domain))url=`https://${domain}`;
+        if(!url)return "NO_WEBSITE";
+        try{const audit=await auditWebsiteHealth(url);if(!audit.isTargetLead)return "HEALTHY";return /ssl/i.test(audit.issueTag||"")?"NO_SSL":/wygas|błąd/i.test(audit.issueTag||"")?"EXPIRED_OR_ERROR":"UNKNOWN";}catch{return "UNKNOWN";}
+      },
     },
-  });
-  inbox = createInbox({
-    db: () => { const h = dataStore(); return h.state === "sqlite" ? h.store.db : null; },
+    inboxDb: () => { const h = dataStore(); return h.state === "sqlite" ? h.store.db : null; },
     read: (name, fallback) => readJson(dataFile(name), fallback),
     write: (name, value) => writeJson(dataFile(name), value),
     encrypt: t => { if (!safeStorage.isEncryptionAvailable()) throw new Error("Szyfrowanie klucza niedostępne."); return safeStorage.encryptString(t).toString("base64"); },
     decrypt: t => safeStorage.decryptString(Buffer.from(t, "base64")),
     fetchImpl: (url, init) => fetch(url, init),
-    block: ({ channel, address }) => {
-      if (channel === "email") { emailEngine.blacklist(address); return; }
+    blockPhone: address => {
       const key = blacklistKey(address), c = blockDb();
       if (key && c) c.prepare("INSERT OR IGNORE INTO blacklist (phone, added_at) VALUES (?, ?)").run(key, Date.now());
     },
     // Bez działającej bazy traktujemy każdy kontakt jak zablokowany (wysyłka wstrzymana).
     isBlocked: ({ channel, address }) => { const h = dataStore(); return h.state !== "sqlite" || h.store.suppression.isBlocked(channel === "email" ? { email: address } : { phone: address }); },
-    send: ({ channel, leadId, address, body }) => channel === "email" ? emailEngine.reply(leadId, body) : sendSmsReply(address, body),
+    sendSms: sendSmsReply,
     notify: announceInboxMessage,
-  });
+  }));
   autopilot = createAutopilot({
     inboxCallback: data => inbox.handleCallback(data),
     file: dataFile, read: readJson, write: writeJson, changed,
