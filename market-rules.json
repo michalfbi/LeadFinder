@@ -97,6 +97,20 @@
     "verifiedAfterSent": 20,
     "probeStaleDays": 120
   },
+  "forecast": {
+    "_comment": "Prognoza sprzedaży: szansa = zainteresowane odpowiedzi na wysłany e-mail × sprzedaże na zainteresowaną odpowiedź. Wartości startowe to założenia właściciela (edytowalne w aplikacji); w miarę wysyłki zastępują je wyniki własnych kampanii.",
+    "positiveRate": 0.01,
+    "positiveStrength": 100,
+    "crossNicheWeight": 0.25,
+    "positiveSource": "Publiczne zestawienia zimnych e-maili podają 0,5–2% zainteresowanych odpowiedzi na wysłaną wiadomość przy szerokim targetowaniu.",
+    "closeRate": 0.15,
+    "closeStrength": 10,
+    "closeSource": "Brak publicznych danych. Założenie zgodne z dotychczasowym wynikiem właściciela: 1 sprzedaż na ponad 500 wiadomości.",
+    "priceUsd": 1500,
+    "workdays": 22,
+    "horizonLabel": "30 dni",
+    "draws": 600
+  },
   "positiveReplies": ["zainteresowany", "cena", "pytanie"],
   "limits": [
     "Census liczy firmy zatrudniające pracowników. Jednoosobowe działalności nie są ujęte, więc prawdziwa liczba małych firm jest większa.",

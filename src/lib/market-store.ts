@@ -51,12 +51,38 @@ export type MarketRow = {
     replies: number;
     positive: number;
     blocked: number;
+    sales: number;
   } | null;
+  forecast?: MarketForecast;
   verified: boolean;
   exact: boolean;
   note: string | null;
 };
+export type MarketForecast = {
+  /** Szansa na co najmniej jedną sprzedaż w okresie prognozy. */
+  chance: number;
+  expectedSales: number;
+  salesLow: number;
+  salesHigh: number;
+  emails: number;
+  perEmail: number;
+  emailsPerSale: number | null;
+  revenueUsd: number;
+  positiveRate: number;
+  closeRate: number;
+  basis: HitBasis;
+};
+export type ForecastAssumptions = {
+  positiveRate: number;
+  closeRate: number;
+  priceUsd: number;
+  custom: boolean;
+  positiveSource: string;
+  closeSource: string;
+  horizonLabel: string;
+};
 export type MarketSettings = {
+  forecast: ForecastAssumptions;
   keyConfigured: boolean;
   fetchedAt: number | null;
   year: number | null;
@@ -72,6 +98,10 @@ export type MarketRanking = MarketSettings & {
   recommended: MarketRow[];
   limits: string[];
   total: number;
+  /** Suma własnych kampanii e-mail: podstawa, na której prognoza się uczy. */
+  own?: { sent: number; positive: number; sales: number };
+  /** Ile e-maili mieści się w okresie prognozy (limit dzienny × dni robocze). */
+  capacity?: number;
 };
 export type MarketFilter = {
   niche?: string;
@@ -86,6 +116,8 @@ type MarketBridge = {
   configure: (value: {
     key?: string;
     clearKey?: boolean;
+    forecast?: { positiveRate: number; closeRate: number; priceUsd: number };
+    resetForecast?: boolean;
   }) => Promise<MarketSettings>;
   test: () => Promise<{ ok: boolean; firms: number }>;
   ranking: (filter?: MarketFilter) => Promise<MarketRanking>;

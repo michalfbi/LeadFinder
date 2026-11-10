@@ -9,6 +9,8 @@ import {
   KeyRound,
   Loader2,
   PlugZap,
+  Save,
+  TrendingUp,
   Radar,
   Users,
 } from "lucide-react";
@@ -58,6 +60,15 @@ const BASIS: Record<HitBasis, string> = {
   "inne-nisze": "szacunek z innych nisz",
   zalozenie: "założenie startowe, brak próbek",
 };
+const FORECAST_BASIS: Record<HitBasis, string> = {
+  pomiar: "Twoja kampania w tym miejscu",
+  "inne-miasta": "Twoje kampanie w tej niszy w innych miastach",
+  "inne-nisze": "Twoje kampanie w innych niszach",
+  zalozenie: "założenia startowe, brak własnych wyników",
+};
+/** Małych szans nie zaokrąglamy do zera: „poniżej 1%” mówi więcej niż „0%”. */
+const chanceText = (v: number) =>
+  v < 0.01 ? "<1%" : `${Math.round(v * 100)}%`;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const num = (v: number) => v.toLocaleString("pl-PL");
 const errorText = (err: unknown) =>
@@ -92,15 +103,17 @@ function RowCard({
             {row.kind === "micro" && " · mały ośrodek"}
           </p>
         </div>
-        <div className="text-right">
-          <p
-            className="text-2xl font-semibold tabular-nums"
-            title="Liczba firm × odsetek trafień × mnożnik konkurencji"
-          >
-            {num(row.potential)}
-          </p>
-          <p className="text-xs text-muted-foreground">potencjał</p>
-        </div>
+        {row.forecast && (
+          <div className="text-right">
+            <p
+              className="text-2xl font-semibold tabular-nums"
+              title="Szansa na co najmniej jedną sprzedaż w okresie prognozy"
+            >
+              {chanceText(row.forecast.chance)}
+            </p>
+            <p className="text-xs text-muted-foreground">szansa na sprzedaż</p>
+          </div>
+        )}
       </header>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -181,6 +194,41 @@ function RowCard({
           </dd>
         </div>
       </dl>
+      {row.forecast && (
+        <p className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm">
+          {row.forecast.emails < 1 ? (
+            "Ten rynek jest już wyczerpany: do osiągalnych firm wysłano wiadomości."
+          ) : (
+            <>
+              Przy {num(row.forecast.emails)} wysłanych e-mailach spodziewane{" "}
+              <span className="font-medium tabular-nums">
+                {row.forecast.expectedSales.toLocaleString("pl-PL", {
+                  maximumFractionDigits: 1,
+                })}{" "}
+                sprzedaży
+              </span>{" "}
+              <span className="text-muted-foreground tabular-nums">
+                (od{" "}
+                {row.forecast.salesLow.toLocaleString("pl-PL", {
+                  maximumFractionDigits: 1,
+                })}{" "}
+                do{" "}
+                {row.forecast.salesHigh.toLocaleString("pl-PL", {
+                  maximumFractionDigits: 1,
+                })}
+                ), czyli około {num(row.forecast.revenueUsd)} USD
+                {row.forecast.emailsPerSale
+                  ? `. Jedna sprzedaż na około ${num(row.forecast.emailsPerSale)} e-maili`
+                  : ""}
+                .
+              </span>
+            </>
+          )}
+          <span className="mt-1 block text-xs text-muted-foreground">
+            Podstawa prognozy: {FORECAST_BASIS[row.forecast.basis]}.
+          </span>
+        </p>
+      )}
       {!measured && (
         <p className="mt-2 text-xs text-muted-foreground">
           Odsetek trafień: {BASIS[row.hit.basis]}.
@@ -273,6 +321,10 @@ export function MarketView() {
   const [busy, setBusy] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [key, setKey] = useState("");
+  const [showForecast, setShowForecast] = useState(false);
+  const [positive, setPositive] = useState("");
+  const [close, setClose] = useState("");
+  const [price, setPrice] = useState("");
 
   const refresh = useCallback(() => {
     loadRanking({
@@ -304,6 +356,53 @@ export function MarketView() {
     } finally {
       setBusy(null);
       setProgress(null);
+      refresh();
+    }
+  };
+  const assumptions = data?.forecast;
+  useEffect(() => {
+    if (!assumptions) return;
+    setPositive(
+      String(+(assumptions.positiveRate * 100).toFixed(2)).replace(".", ","),
+    );
+    setClose(
+      String(+(assumptions.closeRate * 100).toFixed(1)).replace(".", ","),
+    );
+    setPrice(String(assumptions.priceUsd));
+    // Pola formularza odświeżamy tylko, gdy zmienią się same wartości, a nie przy każdym pobraniu rankingu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    assumptions?.positiveRate,
+    assumptions?.closeRate,
+    assumptions?.priceUsd,
+  ]);
+  const saveForecast = async (reset = false) => {
+    const bridge = marketBridge();
+    if (!bridge) return;
+    setBusy("forecast");
+    try {
+      const parse = (v: string) =>
+        Number(v.replace(",", ".").replace("%", "").trim());
+      await bridge.configure(
+        reset
+          ? { resetForecast: true }
+          : {
+              forecast: {
+                positiveRate: parse(positive) / 100,
+                closeRate: parse(close) / 100,
+                priceUsd: parse(price),
+              },
+            },
+      );
+      toast.success(
+        reset
+          ? "Przywrócono założenia startowe."
+          : "Zapisano założenia. Prognozy przeliczone.",
+      );
+    } catch (err) {
+      toast.error(errorText(err));
+    } finally {
+      setBusy(null);
       refresh();
     }
   };
@@ -504,6 +603,128 @@ export function MarketView() {
         </div>
       ) : (
         <>
+          {assumptions && (
+            <section
+              aria-label="Prognoza sprzedaży"
+              className={`${GLASS} space-y-3 p-4 sm:p-5`}
+            >
+              <div className="flex flex-wrap items-start gap-3">
+                <TrendingUp className="mt-0.5 size-5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1 basis-64 space-y-1 text-sm text-muted-foreground">
+                  <p>
+                    <span className="font-medium text-foreground">
+                      Szansa na sprzedaż w {assumptions.horizonLabel}.
+                    </span>{" "}
+                    Program liczy ją dla każdego miejsca z trzech liczb: ile
+                    firm da się zaadresować, jaki odsetek odpowie z
+                    zainteresowaniem i jaki odsetek zainteresowanych kupi. Przy
+                    limicie wysyłki mieści się {num(data.capacity ?? 0)}{" "}
+                    e-maili.
+                  </p>
+                  <p className="tabular-nums">
+                    {data.own && data.own.sent > 0
+                      ? `Twoje dotychczasowe kampanie: ${num(data.own.sent)} wysłanych, ${data.own.positive} zainteresowanych, ${data.own.sales} sprzedaży. Prognoza uczy się z tych liczb.`
+                      : "Nie masz jeszcze własnych wyników z e-maili, więc prognoza stoi na założeniach poniżej. Im więcej wyślesz, tym mniej będzie zgadywania."}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  aria-expanded={showForecast}
+                  onClick={() => setShowForecast((v) => !v)}
+                >
+                  <ChevronDown
+                    className={`transition-transform ${showForecast ? "rotate-180" : ""}`}
+                  />{" "}
+                  Założenia
+                </Button>
+              </div>
+              {showForecast && (
+                <div className="space-y-3 border-t border-white/10 pt-3">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <Label htmlFor="fc-positive">
+                        Zainteresowane odpowiedzi (% wysłanych)
+                      </Label>
+                      <Input
+                        id="fc-positive"
+                        inputMode="decimal"
+                        className="mt-1 rounded-xl"
+                        value={positive}
+                        disabled={simulated}
+                        onChange={(e) => setPositive(e.target.value)}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {assumptions.positiveSource}
+                      </p>
+                    </div>
+                    <div>
+                      <Label htmlFor="fc-close">
+                        Sprzedaże (% zainteresowanych)
+                      </Label>
+                      <Input
+                        id="fc-close"
+                        inputMode="decimal"
+                        className="mt-1 rounded-xl"
+                        value={close}
+                        disabled={simulated}
+                        onChange={(e) => setClose(e.target.value)}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {assumptions.closeSource}
+                      </p>
+                    </div>
+                    <div>
+                      <Label htmlFor="fc-price">Cena strony (USD)</Label>
+                      <Input
+                        id="fc-price"
+                        inputMode="numeric"
+                        className="mt-1 rounded-xl"
+                        value={price}
+                        disabled={simulated}
+                        onChange={(e) => setPrice(e.target.value)}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Służy tylko do przeliczenia prognozy na pieniądze.
+                      </p>
+                    </div>
+                  </div>
+                  {simulated ? (
+                    <p className="text-xs text-muted-foreground">
+                      Założenia zmienia się w aplikacji na Macu.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        className="rounded-xl"
+                        disabled={busy !== null}
+                        onClick={() => void saveForecast()}
+                      >
+                        {busy === "forecast" ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <Save />
+                        )}{" "}
+                        Zapisz założenia
+                      </Button>
+                      {assumptions.custom && (
+                        <Button
+                          variant="ghost"
+                          className="rounded-xl text-muted-foreground"
+                          disabled={busy !== null}
+                          onClick={() => void saveForecast(true)}
+                        >
+                          Przywróć startowe
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
           {data.recommended.length > 0 && (
             <section aria-label="Co zbadać najpierw" className="space-y-3">
               <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -621,8 +842,19 @@ export function MarketView() {
             </summary>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>
-                Potencjał = liczba firm × odsetek trafień × mnożnik konkurencji
-                (niska ×1,15, wysoka ×0,85).
+                Szansa na sprzedaż to prawdopodobieństwo co najmniej jednej
+                sprzedaży w okresie prognozy. Program losuje kilkaset możliwych
+                przebiegów kampanii z tego, co wiadomo, i liczy, w ilu z nich
+                doszło do sprzedaży.
+              </li>
+              <li>
+                Dopóki nie masz własnych wyników, szansa różni się między
+                miejscami tylko liczbą osiągalnych firm. Różnice w chęci zakupu
+                między miastami pokażą dopiero Twoje kampanie.
+              </li>
+              <li>
+                Kolejność listy: liczba firm × odsetek trafień × mnożnik
+                konkurencji (niska ×1,15, wysoka ×0,85).
               </li>
               <li>
                 Trafienie to firma ze słabą, ale działającą stroną i znalezionym

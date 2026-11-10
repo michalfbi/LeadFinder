@@ -454,6 +454,7 @@ describe("rozpoznanie rynku: dane i ranking", () => {
       replies: 4,
       positive: 1,
       blocked: 1,
+      sales: 0,
     });
     expect(row.verified).toBe(true);
     expect(
@@ -461,5 +462,100 @@ describe("rozpoznanie rynku: dane i ranking", () => {
         .ranking({ niche: "roofing", limit: 200 })
         .rows.find((r: { geo: string }) => r.geo === "19100").campaign,
     ).toBeNull();
+  });
+
+  it("prognoza sprzedaży: jawne założenia na starcie, potem własne wyniki", async () => {
+    const { market } = setup();
+    await market.refresh();
+    const start = market.ranking({ niche: "roofing", limit: 200 });
+    const tulsa = start.rows.find((r: { geo: string }) => r.geo === "46140");
+    expect(start.own).toEqual({ sent: 0, positive: 0, sales: 0 });
+    expect(tulsa.forecast.basis).toBe("zalozenie");
+    expect(tulsa.forecast.positiveRate).toBeCloseTo(
+      rules.forecast.positiveRate,
+      5,
+    );
+    expect(tulsa.forecast.closeRate).toBeCloseTo(rules.forecast.closeRate, 5);
+    // 1% × 15% = jedna sprzedaż na kilkaset e-maili; szansa to ułamek, nie pewność.
+    expect(tulsa.forecast.emailsPerSale).toBeGreaterThan(300);
+    expect(tulsa.forecast.emailsPerSale).toBeLessThan(1500);
+    expect(tulsa.forecast.chance).toBeGreaterThan(0);
+    expect(tulsa.forecast.chance).toBeLessThan(0.5);
+    expect(tulsa.forecast.emails).toBeLessThanOrEqual(start.capacity);
+    expect(tulsa.forecast.salesLow).toBeLessThanOrEqual(
+      tulsa.forecast.expectedSales,
+    );
+    expect(tulsa.forecast.salesHigh).toBeGreaterThanOrEqual(
+      tulsa.forecast.expectedSales,
+    );
+    // Ten sam stan danych daje tę samą liczbę (bez migotania przy odświeżeniu).
+    expect(
+      market
+        .ranking({ niche: "roofing", limit: 200 })
+        .rows.find((r: { geo: string }) => r.geo === "46140").forecast,
+    ).toEqual(tulsa.forecast);
+    // Większy rynek przy tych samych założeniach nie może mieć mniejszej szansy.
+    const dallas = start.rows.find((r: { geo: string }) => r.geo === "19100");
+    expect(dallas.forecast.chance).toBeGreaterThanOrEqual(
+      tulsa.forecast.chance,
+    );
+
+    // Właściciel zmienia założenia: prognoza idzie za nimi.
+    expect(() =>
+      market.configure({
+        forecast: { positiveRate: 0, closeRate: 0.2, priceUsd: 1500 },
+      }),
+    ).toThrow("większą od 0%");
+    const tuned = market.configure({
+      forecast: { positiveRate: 0.03, closeRate: 0.3, priceUsd: 2000 },
+    });
+    expect(tuned.forecast).toMatchObject({
+      positiveRate: 0.03,
+      closeRate: 0.3,
+      priceUsd: 2000,
+      custom: true,
+    });
+    const better = market
+      .ranking({ niche: "roofing", limit: 200 })
+      .rows.find((r: { geo: string }) => r.geo === "46140");
+    expect(better.forecast.chance).toBeGreaterThan(tulsa.forecast.chance * 2);
+    expect(market.configure({ resetForecast: true }).forecast.custom).toBe(
+      false,
+    );
+  });
+
+  it("prognoza uczy się z własnych kampanii i pożycza wynik innym miastom niszy", async () => {
+    const leads = Array.from({ length: 200 }, (_, i) => ({
+      id: `s${i}`,
+      kategoria: "Dekarze",
+      miasto: "Tulsa, OK",
+      email_sent_at: "2026-11-01T15:00:00Z",
+      status: i < 4 ? "sukces" : i < 16 ? "odpisal" : "wyslano_wiadomosc",
+    }));
+    const { market, store } = setup(fakeCensus(), leads);
+    await market.refresh();
+    const insert = store.db.prepare(
+      "INSERT INTO messages (id, lead_kind, lead_id, channel, direction, address, subject, body, template_id, status, classification, at, meta) VALUES (?, 'email', ?, 'email', 'in', 'a@b.c', NULL, 'x', NULL, 'sent', 'cena', 1, '{}')",
+    );
+    for (let i = 4; i < 16; i++) insert.run(`m${i}`, `s${i}`);
+    const r = market.ranking({ niche: "roofing", limit: 200 });
+    expect(r.own).toEqual({ sent: 200, positive: 16, sales: 4 });
+    const tulsa = r.rows.find((x: { geo: string }) => x.geo === "46140");
+    expect(tulsa.campaign.sales).toBe(4);
+    expect(tulsa.forecast.basis).toBe("pomiar");
+    // 16 zainteresowanych na 200 wysłanych ciągnie odsetek mocno ponad założenie 1%.
+    expect(tulsa.forecast.positiveRate).toBeGreaterThan(0.04);
+    expect(tulsa.forecast.closeRate).toBeGreaterThan(0.18);
+    const dallas = r.rows.find((x: { geo: string }) => x.geo === "19100");
+    expect(dallas.forecast.basis).toBe("inne-miasta");
+    expect(dallas.forecast.positiveRate).toBeGreaterThan(0.03);
+    const painting = market.ranking({ niche: "painting", limit: 200 }).rows[0];
+    expect(painting.forecast.basis).toBe("inne-nisze");
+    expect(painting.forecast.positiveRate).toBeGreaterThan(
+      rules.forecast.positiveRate,
+    );
+    expect(painting.forecast.positiveRate).toBeLessThan(
+      dallas.forecast.positiveRate,
+    );
   });
 });

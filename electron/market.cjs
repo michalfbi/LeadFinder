@@ -188,6 +188,106 @@ function hitRate({ own, niche, all }) {
     basis,
     sampled: own.sampled,
     hits: own.hits,
+    a,
+    b,
+  };
+}
+
+/* ---- losowanie do prognozy: stałe ziarno, żeby ta sama komórka zawsze dawała ten sam wynik ---- */
+
+function seededRandom(text) {
+  let h = 2166136261;
+  for (const ch of String(text)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function sampleGamma(shape, rand) {
+  if (shape < 1)
+    return sampleGamma(shape + 1, rand) * Math.pow(rand() || 1e-12, 1 / shape);
+  const dd = shape - 1 / 3;
+  const c = 1 / Math.sqrt(9 * dd);
+  for (;;) {
+    let x;
+    let v;
+    do {
+      const u1 = rand() || 1e-12;
+      x = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * rand());
+      v = 1 + c * x;
+    } while (v <= 0);
+    v = v * v * v;
+    const u = rand() || 1e-12;
+    if (Math.log(u) < 0.5 * x * x + dd - dd * v + dd * Math.log(v))
+      return dd * v;
+  }
+}
+
+function sampleBeta(a, b, rand) {
+  const x = sampleGamma(a, rand);
+  return x / (x + sampleGamma(b, rand));
+}
+
+/**
+ * Prognoza sprzedaży dla jednej komórki na jeden okres wysyłki.
+ * Losuje wiele możliwych „prawd” (odsetek trafień, odsetek zainteresowanych, odsetek sprzedaży)
+ * z tego, co wiadomo, i liczy, jak często kończy się to co najmniej jedną sprzedażą.
+ *
+ *  firms, hit {a,b}        → ile firm da się w ogóle zaadresować
+ *  positive {a,b}          → zainteresowane odpowiedzi na wysłany e-mail
+ *  close {a,b}             → sprzedaże na zainteresowaną odpowiedź
+ *  capacity                → ile e-maili zmieści się w okresie (limit dzienny × dni robocze)
+ */
+function forecastCell({
+  id,
+  firms,
+  hit,
+  positive,
+  close,
+  capacity,
+  priceUsd,
+  alreadySent = 0,
+}) {
+  const rand = seededRandom(id);
+  const draws = rules.forecast.draws;
+  let chance = 0;
+  let sales = 0;
+  let emails = 0;
+  let perEmail = 0;
+  const outcomes = [];
+  for (let i = 0; i < draws; i++) {
+    const reachable = Math.max(
+      0,
+      firms * sampleBeta(hit.a, hit.b, rand) - alreadySent,
+    );
+    const n = Math.min(reachable, capacity);
+    const p =
+      sampleBeta(positive.a, positive.b, rand) *
+      sampleBeta(close.a, close.b, rand);
+    const expected = n * p;
+    chance += 1 - Math.pow(1 - p, n);
+    sales += expected;
+    emails += n;
+    perEmail += p;
+    outcomes.push(expected);
+  }
+  outcomes.sort((x, y) => x - y);
+  const [lo, hi] = rules.scoring.interval;
+  const mean = perEmail / draws;
+  return {
+    chance: chance / draws,
+    expectedSales: sales / draws,
+    salesLow: outcomes[Math.floor(lo * (draws - 1))],
+    salesHigh: outcomes[Math.floor(hi * (draws - 1))],
+    emails: Math.round(emails / draws),
+    perEmail: mean,
+    emailsPerSale: mean > 0 ? Math.round(1 / mean) : null,
+    revenueUsd: Math.round((sales / draws) * priceUsd),
   };
 }
 
@@ -258,7 +358,30 @@ function createMarket(d) {
       year: s.year ?? null,
       notes: Array.isArray(s.notes) ? s.notes : [],
       keySignupUrl: rules.census.keySignupUrl,
+      forecast: assumptions(s),
       ...counts,
+    };
+  }
+
+  /** Założenia prognozy: wartości właściciela albo startowe z market-rules.json. */
+  function assumptions(s = raw()) {
+    const f = rules.forecast;
+    const own = s.forecast ?? {};
+    const rate = (v, fallback) =>
+      Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) < 1
+        ? Number(v)
+        : fallback;
+    return {
+      positiveRate: rate(own.positiveRate, f.positiveRate),
+      closeRate: rate(own.closeRate, f.closeRate),
+      priceUsd:
+        Number(own.priceUsd) > 0
+          ? Math.round(Number(own.priceUsd))
+          : f.priceUsd,
+      custom: Boolean(s.forecast),
+      positiveSource: f.positiveSource,
+      closeSource: f.closeSource,
+      horizonLabel: f.horizonLabel,
     };
   }
 
@@ -272,6 +395,26 @@ function createMarket(d) {
           "Klucz Census to ciąg 40 liter i cyfr z e-maila od Census.",
         );
       s.encryptedKey = d.encrypt(key);
+    }
+    if (value.resetForecast) delete s.forecast;
+    if (value.forecast) {
+      const f = value.forecast;
+      const pct = (v, label) => {
+        const n = Number(v);
+        if (!Number.isFinite(n) || n <= 0 || n >= 1)
+          throw new Error(
+            `${label}: podaj wartość większą od 0% i mniejszą od 100%.`,
+          );
+        return n;
+      };
+      const price = Math.round(Number(f.priceUsd));
+      if (!Number.isFinite(price) || price <= 0)
+        throw new Error("Cena musi być dodatnią liczbą dolarów.");
+      s.forecast = {
+        positiveRate: pct(f.positiveRate, "Zainteresowane odpowiedzi"),
+        closeRate: pct(f.closeRate, "Sprzedaże z zainteresowanych"),
+        priceUsd: price,
+      };
     }
     d.write(SETTINGS_FILE, s);
     return settings();
@@ -506,6 +649,8 @@ function createMarket(d) {
 
   function campaignStats(db, geos) {
     const stats = new Map();
+    stats.totals = { sent: 0, positive: 0, sales: 0 };
+    stats.byNiche = new Map();
     let leads = [];
     try {
       leads = d.emailLeads?.() ?? [];
@@ -532,6 +677,18 @@ function createMarket(d) {
       if (!l.email_sent_at) continue;
       const niche = NICHE_BY_LABEL.get(l.kategoria)?.id;
       const key = cityKey(l.miasto);
+      const sold = l.status === "sukces";
+      const interested = sold || positive.has(l.id);
+      // Sumy liczą każdą wysyłkę, także taką, której nie da się przypisać do miasta.
+      stats.totals.sent++;
+      if (interested) stats.totals.positive++;
+      if (sold) stats.totals.sales++;
+      if (niche) {
+        const n = stats.byNiche.get(niche) ?? { sent: 0, positive: 0 };
+        n.sent++;
+        if (interested) n.positive++;
+        stats.byNiche.set(niche, n);
+      }
       if (!niche || !key) continue;
       if (!geoCache.has(key)) geoCache.set(key, resolveCity(geos, key));
       const geo = geoCache.get(key);
@@ -542,11 +699,18 @@ function createMarket(d) {
         replies: 0,
         positive: 0,
         blocked: 0,
+        sales: 0,
       };
       s.sent++;
-      if (l.engaged_at || l.status === "odpisal" || l.status === "zablokowany")
+      if (
+        l.engaged_at ||
+        l.status === "odpisal" ||
+        l.status === "zablokowany" ||
+        sold
+      )
         s.replies++;
-      if (positive.has(l.id)) s.positive++;
+      if (interested) s.positive++;
+      if (sold) s.sales++;
       if (l.status === "zablokowany") s.blocked++;
       stats.set(id, s);
     }
@@ -739,13 +903,77 @@ function createMarket(d) {
       shown.set(r.geo, n);
       return n <= perGeo;
     });
+    // Prognoza sprzedaży tylko dla wierszy, które trafią na ekran (losowanie jest kosztowne).
+    const fa = meta.forecast;
+    const fr = rules.forecast;
+    const ownTotals = campaigns.totals;
+    const capacity = US.email.dailyLimit * fr.workdays;
+    const closeA = fa.closeRate * fr.closeStrength + ownTotals.sales;
+    const closeB =
+      (1 - fa.closeRate) * fr.closeStrength +
+      Math.max(0, ownTotals.positive - ownTotals.sales);
+    const withForecast = (r) => {
+      if (r.forecast) return r;
+      const cell = r.campaign ?? { sent: 0, positive: 0 };
+      const nicheAll = campaigns.byNiche.get(r.niche) ?? {
+        sent: 0,
+        positive: 0,
+      };
+      const nicheOther = {
+        sent: nicheAll.sent - cell.sent,
+        positive: nicheAll.positive - cell.positive,
+      };
+      const other = {
+        sent: ownTotals.sent - nicheAll.sent,
+        positive: ownTotals.positive - nicheAll.positive,
+      };
+      // Te same trzy poziomy co przy odsetku trafień: wszystkie kampanie → ta nisza → ta komórka.
+      // Wynik z innej niszy jest słabszą wskazówką, więc liczy się z mniejszą wagą.
+      const w = fr.crossNicheWeight;
+      const global =
+        (w * other.positive + fr.positiveStrength * fa.positiveRate) /
+        (w * other.sent + fr.positiveStrength);
+      const pooled =
+        (nicheOther.positive + fr.positiveStrength * global) /
+        (nicheOther.sent + fr.positiveStrength);
+      const positive = {
+        a: pooled * fr.positiveStrength + cell.positive,
+        b: (1 - pooled) * fr.positiveStrength + (cell.sent - cell.positive),
+      };
+      const basis =
+        cell.sent >= s.verifiedAfterSent
+          ? "pomiar"
+          : nicheOther.sent > 0
+            ? "inne-miasta"
+            : other.sent > 0
+              ? "inne-nisze"
+              : "zalozenie";
+      r.forecast = {
+        ...forecastCell({
+          id: r.id,
+          firms: r.firms,
+          hit: r.hit,
+          positive,
+          close: { a: closeA, b: closeB },
+          capacity,
+          priceUsd: fa.priceUsd,
+          alreadySent: cell.sent,
+        }),
+        positiveRate: positive.a / (positive.a + positive.b),
+        closeRate: closeA / (closeA + closeB),
+        basis,
+      };
+      return r;
+    };
     return {
       ready: true,
       ...meta,
-      rows: listed.slice(0, limit),
-      recommended,
+      rows: listed.slice(0, limit).map(withForecast),
+      recommended: recommended.map(withForecast),
       limits: rules.limits,
       total: rows.length,
+      own: ownTotals,
+      capacity,
     };
   }
 
@@ -767,6 +995,7 @@ module.exports = {
   probeCityFor,
   cityKey,
   hitRate,
+  forecastCell,
   betaQuantile,
   parseCensus,
 };
