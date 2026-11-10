@@ -1,0 +1,623 @@
+{
+  "version": 1,
+  "markets": {
+    "PL": {
+      "label": "Polska",
+      "flag": "🇵🇱",
+      "language": "pl",
+      "channel": "sms",
+      "currency": "PLN",
+      "summary": "Kontakt marketingowy SMS i e-mail wymaga uprzedniej zgody odbiorcy (art. 398 Prawa komunikacji elektronicznej).",
+      "email": {
+        "requiresPriorConsent": true,
+        "confirmation": "Mam uprawnienie i wymaganą zgodę na kontakt marketingowy z wybranymi odbiorcami; sama stopka nie zapewnia zgodności.",
+        "dailyLimit": 50,
+        "sendWindow": {
+          "startHour": 8,
+          "endHour": 17,
+          "weekdaysOnly": true
+        },
+        "footer": [
+          "{company}",
+          "{address}",
+          "Kontakt: {from}",
+          "Jeżeli nie życzą sobie Państwo kontaktu, proszę odpowiedzieć STOP."
+        ],
+        "unsubscribeSubject": "STOP"
+      }
+    },
+    "US": {
+      "label": "USA",
+      "flag": "🇺🇸",
+      "language": "en",
+      "channel": "email",
+      "currency": "USD",
+      "summary": "E-mail do firm jest dozwolony bez wcześniejszej zgody (CAN-SPAM), pod warunkiem prawdziwych danych nadawcy, adresu pocztowego w stopce i działającej rezygnacji. Zimny SMS jest zakazany (TCPA), więc program go tu nie wysyła.",
+      "defaultMinScore": 50,
+      "defaultPrice": "fixed price from $1,500",
+      "corporateWords": [
+        "Corp",
+        "Corp.",
+        "Corporation",
+        "Holdings",
+        "Franchise",
+        "Nationwide",
+        "Group",
+        "Enterprises",
+        "International"
+      ],
+      "email": {
+        "requiresPriorConsent": false,
+        "confirmation": "Potwierdzam: dane nadawcy i adres pocztowy są prawdziwe, temat nie wprowadza w błąd, a każdą rezygnację uszanuję najpóźniej w 10 dni roboczych.",
+        "dailyLimit": 20,
+        "sendWindow": {
+          "startHour": 9,
+          "endHour": 17,
+          "weekdaysOnly": true
+        },
+        "footer": [
+          "{company}",
+          "{address}",
+          "This email is a business solicitation from {company}.",
+          "Not interested? Reply \"unsubscribe\" and I won't email you again."
+        ],
+        "unsubscribeSubject": "unsubscribe",
+        "checklist": [
+          "Prawdziwa nazwa nadawcy i adres „Od” (bez podszywania się).",
+          "Temat zgodny z treścią wiadomości.",
+          "Informacja, że to oferta handlowa (program dopisuje ją w stopce).",
+          "Prawdziwy adres pocztowy nadawcy w stopce (może być skrytka lub wirtualne biuro).",
+          "Prosta rezygnacja: odpowiedź „unsubscribe”. Program blokuje adres na stałe.",
+          "Rezygnacja uszanowana w ciągu 10 dni roboczych (program robi to od razu po sprawdzeniu odpowiedzi)."
+        ]
+      },
+      "refusalKeywords": [
+        "unsubscribe",
+        "remove me",
+        "take me off",
+        "stop emailing",
+        "do not contact",
+        "don't contact",
+        "do not email",
+        "don't email",
+        "not interested",
+        "no thanks",
+        "no thank you",
+        "spam",
+        "scam",
+        "reported",
+        "how did you get",
+        "where did you get",
+        "leave me alone",
+        "opt out",
+        "opt-out"
+      ],
+      "pills": [
+        "roofing",
+        "plumbing",
+        "hvac",
+        "landscaping",
+        "fencing",
+        "concrete",
+        "tree-service",
+        "septic"
+      ],
+      "niches": [
+        {
+          "id": "roofing",
+          "label": "Dekarze",
+          "query": "roofing contractor",
+          "trade": "roofing"
+        },
+        {
+          "id": "plumbing",
+          "label": "Hydraulicy",
+          "query": "plumber",
+          "trade": "plumbing"
+        },
+        {
+          "id": "hvac",
+          "label": "Klimatyzacja i ogrzewanie",
+          "query": "HVAC contractor",
+          "trade": "heating and cooling"
+        },
+        {
+          "id": "electrician",
+          "label": "Elektrycy",
+          "query": "electrician",
+          "trade": "electrical"
+        },
+        {
+          "id": "landscaping",
+          "label": "Ogrody i trawniki",
+          "query": "landscaping company",
+          "trade": "landscaping"
+        },
+        {
+          "id": "fencing",
+          "label": "Ogrodzenia",
+          "query": "fence contractor",
+          "trade": "fencing"
+        },
+        {
+          "id": "concrete",
+          "label": "Beton i podjazdy",
+          "query": "concrete contractor",
+          "trade": "concrete"
+        },
+        {
+          "id": "tree-service",
+          "label": "Wycinka drzew",
+          "query": "tree service",
+          "trade": "tree service"
+        },
+        {
+          "id": "pressure-washing",
+          "label": "Mycie ciśnieniowe",
+          "query": "pressure washing service",
+          "trade": "pressure washing"
+        },
+        {
+          "id": "painting",
+          "label": "Malarze",
+          "query": "painting contractor",
+          "trade": "painting"
+        },
+        {
+          "id": "flooring",
+          "label": "Podłogi",
+          "query": "flooring contractor",
+          "trade": "flooring"
+        },
+        {
+          "id": "garage-door",
+          "label": "Bramy garażowe",
+          "query": "garage door repair",
+          "trade": "garage door"
+        },
+        {
+          "id": "pest-control",
+          "label": "Dezynsekcja",
+          "query": "pest control service",
+          "trade": "pest control"
+        },
+        {
+          "id": "septic",
+          "label": "Szamba i kanalizacja",
+          "query": "septic tank service",
+          "trade": "septic"
+        },
+        {
+          "id": "towing",
+          "label": "Laweta",
+          "query": "towing service",
+          "trade": "towing"
+        },
+        {
+          "id": "auto-detailing",
+          "label": "Auto detailing",
+          "query": "auto detailing",
+          "trade": "auto detailing"
+        },
+        {
+          "id": "junk-removal",
+          "label": "Wywóz rzeczy",
+          "query": "junk removal service",
+          "trade": "junk removal"
+        },
+        {
+          "id": "remodeling",
+          "label": "Remonty",
+          "query": "remodeling contractor",
+          "trade": "remodeling"
+        }
+      ],
+      "states": [
+        {
+          "code": "AL",
+          "name": "Alabama",
+          "tz": "America/Chicago",
+          "cities": [
+            "Birmingham",
+            "Huntsville",
+            "Mobile",
+            "Montgomery"
+          ]
+        },
+        {
+          "code": "AZ",
+          "name": "Arizona",
+          "tz": "America/Phoenix",
+          "cities": [
+            "Phoenix",
+            "Tucson",
+            "Mesa",
+            "Scottsdale"
+          ]
+        },
+        {
+          "code": "AR",
+          "name": "Arkansas",
+          "tz": "America/Chicago",
+          "cities": [
+            "Little Rock",
+            "Fayetteville",
+            "Fort Smith"
+          ]
+        },
+        {
+          "code": "CA",
+          "name": "California",
+          "tz": "America/Los_Angeles",
+          "cities": [
+            "Sacramento",
+            "Fresno",
+            "Bakersfield",
+            "San Diego",
+            "Riverside"
+          ]
+        },
+        {
+          "code": "CO",
+          "name": "Colorado",
+          "tz": "America/Denver",
+          "cities": [
+            "Denver",
+            "Colorado Springs",
+            "Fort Collins",
+            "Aurora"
+          ]
+        },
+        {
+          "code": "CT",
+          "name": "Connecticut",
+          "tz": "America/New_York",
+          "cities": [
+            "Hartford",
+            "New Haven",
+            "Stamford"
+          ]
+        },
+        {
+          "code": "FL",
+          "name": "Florida",
+          "tz": "America/New_York",
+          "cities": [
+            "Tampa",
+            "Orlando",
+            "Jacksonville",
+            "Fort Myers",
+            "Sarasota"
+          ]
+        },
+        {
+          "code": "GA",
+          "name": "Georgia",
+          "tz": "America/New_York",
+          "cities": [
+            "Atlanta",
+            "Savannah",
+            "Augusta",
+            "Macon"
+          ]
+        },
+        {
+          "code": "ID",
+          "name": "Idaho",
+          "tz": "America/Boise",
+          "cities": [
+            "Boise",
+            "Meridian",
+            "Idaho Falls"
+          ]
+        },
+        {
+          "code": "IL",
+          "name": "Illinois",
+          "tz": "America/Chicago",
+          "cities": [
+            "Chicago",
+            "Naperville",
+            "Rockford",
+            "Peoria"
+          ]
+        },
+        {
+          "code": "IN",
+          "name": "Indiana",
+          "tz": "America/Indiana/Indianapolis",
+          "cities": [
+            "Indianapolis",
+            "Fort Wayne",
+            "Evansville"
+          ]
+        },
+        {
+          "code": "IA",
+          "name": "Iowa",
+          "tz": "America/Chicago",
+          "cities": [
+            "Des Moines",
+            "Cedar Rapids",
+            "Davenport"
+          ]
+        },
+        {
+          "code": "KS",
+          "name": "Kansas",
+          "tz": "America/Chicago",
+          "cities": [
+            "Wichita",
+            "Overland Park",
+            "Topeka"
+          ]
+        },
+        {
+          "code": "KY",
+          "name": "Kentucky",
+          "tz": "America/New_York",
+          "cities": [
+            "Louisville",
+            "Lexington",
+            "Bowling Green"
+          ]
+        },
+        {
+          "code": "LA",
+          "name": "Louisiana",
+          "tz": "America/Chicago",
+          "cities": [
+            "Baton Rouge",
+            "New Orleans",
+            "Lafayette",
+            "Shreveport"
+          ]
+        },
+        {
+          "code": "MD",
+          "name": "Maryland",
+          "tz": "America/New_York",
+          "cities": [
+            "Baltimore",
+            "Frederick",
+            "Annapolis"
+          ]
+        },
+        {
+          "code": "MA",
+          "name": "Massachusetts",
+          "tz": "America/New_York",
+          "cities": [
+            "Worcester",
+            "Springfield",
+            "Lowell"
+          ]
+        },
+        {
+          "code": "MI",
+          "name": "Michigan",
+          "tz": "America/Detroit",
+          "cities": [
+            "Grand Rapids",
+            "Detroit",
+            "Lansing",
+            "Ann Arbor"
+          ]
+        },
+        {
+          "code": "MN",
+          "name": "Minnesota",
+          "tz": "America/Chicago",
+          "cities": [
+            "Minneapolis",
+            "Saint Paul",
+            "Rochester",
+            "Duluth"
+          ]
+        },
+        {
+          "code": "MO",
+          "name": "Missouri",
+          "tz": "America/Chicago",
+          "cities": [
+            "Kansas City",
+            "St. Louis",
+            "Springfield"
+          ]
+        },
+        {
+          "code": "NE",
+          "name": "Nebraska",
+          "tz": "America/Chicago",
+          "cities": [
+            "Omaha",
+            "Lincoln"
+          ]
+        },
+        {
+          "code": "NV",
+          "name": "Nevada",
+          "tz": "America/Los_Angeles",
+          "cities": [
+            "Las Vegas",
+            "Reno",
+            "Henderson"
+          ]
+        },
+        {
+          "code": "NJ",
+          "name": "New Jersey",
+          "tz": "America/New_York",
+          "cities": [
+            "Newark",
+            "Jersey City",
+            "Toms River"
+          ]
+        },
+        {
+          "code": "NM",
+          "name": "New Mexico",
+          "tz": "America/Denver",
+          "cities": [
+            "Albuquerque",
+            "Santa Fe",
+            "Las Cruces"
+          ]
+        },
+        {
+          "code": "NY",
+          "name": "New York",
+          "tz": "America/New_York",
+          "cities": [
+            "Buffalo",
+            "Rochester",
+            "Syracuse",
+            "Albany"
+          ]
+        },
+        {
+          "code": "NC",
+          "name": "North Carolina",
+          "tz": "America/New_York",
+          "cities": [
+            "Charlotte",
+            "Raleigh",
+            "Greensboro",
+            "Wilmington"
+          ]
+        },
+        {
+          "code": "OH",
+          "name": "Ohio",
+          "tz": "America/New_York",
+          "cities": [
+            "Columbus",
+            "Cincinnati",
+            "Cleveland",
+            "Dayton"
+          ]
+        },
+        {
+          "code": "OK",
+          "name": "Oklahoma",
+          "tz": "America/Chicago",
+          "cities": [
+            "Tulsa",
+            "Oklahoma City",
+            "Norman"
+          ]
+        },
+        {
+          "code": "OR",
+          "name": "Oregon",
+          "tz": "America/Los_Angeles",
+          "cities": [
+            "Portland",
+            "Eugene",
+            "Salem",
+            "Bend"
+          ]
+        },
+        {
+          "code": "PA",
+          "name": "Pennsylvania",
+          "tz": "America/New_York",
+          "cities": [
+            "Pittsburgh",
+            "Allentown",
+            "Harrisburg",
+            "Lancaster"
+          ]
+        },
+        {
+          "code": "SC",
+          "name": "South Carolina",
+          "tz": "America/New_York",
+          "cities": [
+            "Charleston",
+            "Columbia",
+            "Greenville"
+          ]
+        },
+        {
+          "code": "TN",
+          "name": "Tennessee",
+          "tz": "America/Chicago",
+          "cities": [
+            "Nashville",
+            "Knoxville",
+            "Chattanooga",
+            "Memphis"
+          ]
+        },
+        {
+          "code": "TX",
+          "name": "Texas",
+          "tz": "America/Chicago",
+          "cities": [
+            "Houston",
+            "Dallas",
+            "San Antonio",
+            "Austin",
+            "Fort Worth"
+          ]
+        },
+        {
+          "code": "UT",
+          "name": "Utah",
+          "tz": "America/Denver",
+          "cities": [
+            "Salt Lake City",
+            "Provo",
+            "Ogden"
+          ]
+        },
+        {
+          "code": "VA",
+          "name": "Virginia",
+          "tz": "America/New_York",
+          "cities": [
+            "Richmond",
+            "Virginia Beach",
+            "Roanoke"
+          ]
+        },
+        {
+          "code": "WA",
+          "name": "Washington",
+          "tz": "America/Los_Angeles",
+          "cities": [
+            "Spokane",
+            "Tacoma",
+            "Seattle",
+            "Vancouver"
+          ]
+        },
+        {
+          "code": "WI",
+          "name": "Wisconsin",
+          "tz": "America/Chicago",
+          "cities": [
+            "Milwaukee",
+            "Madison",
+            "Green Bay"
+          ]
+        }
+      ],
+      "templates": {
+        "subject": {
+          "OUTDATED_NO_SSL_MOBILE": "{Quick note about the {name} website|A question about the {name} website}",
+          "EXPIRED_OR_BROKEN_SITE": "{The {name} website isn't loading|Heads-up: the {name} website is down}",
+          "SOCIAL_OR_FREE_BUILDER": "{A website idea for {name}|Quick question about {name} online}",
+          "DEFAULT": "{A website idea for {name}|Quick question about {name} online}"
+        },
+        "body": {
+          "OUTDATED_NO_SSL_MOBILE": "{Hi|Hello}{greeting},\n\nI was looking at the {name} website and noticed that {diagnosis}.{reviews} That usually costs local businesses calls from people searching on their phones.\n\nI build fast, mobile-friendly websites for {trade} businesses{price}. {I can put together a free homepage mockup for {name} so you can see the difference|Happy to send over a free mockup of a new homepage for {name}} – would that be useful?",
+          "EXPIRED_OR_BROKEN_SITE": "{Hi|Hello}{greeting},\n\nI tried to open the {name} website today and {diagnosis}.{reviews} People who find you on Google can't reach you through it right now.\n\nI build fast, mobile-friendly websites for {trade} businesses{price}. {I can put together a free homepage mockup for {name} so you can see the difference|Happy to send over a free mockup of a new homepage for {name}} – would that be useful?",
+          "SOCIAL_OR_FREE_BUILDER": "{Hi|Hello}{greeting},\n\nI came across {name}{city} and noticed that {diagnosis}.{reviews}\n\nI build fast, mobile-friendly websites for {trade} businesses{price}. {I can put together a free homepage mockup for {name} so you can see the difference|Happy to send over a free mockup of a new homepage for {name}} – would that be useful?",
+          "DEFAULT": "{Hi|Hello}{greeting},\n\nI came across {name}{city}{nosite}.{reviews}\n\nI build fast, mobile-friendly websites for {trade} businesses{price}. {I can put together a free homepage mockup for {name} so you can see the difference|Happy to send over a free mockup of a new homepage for {name}} – would that be useful?"
+        }
+      }
+    }
+  }
+}

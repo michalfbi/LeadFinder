@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "package:mac": "node scripts/package-mac.mjs"
+    "package:mac": "node scripts/package-mac.mjs",
+    "symulacja": "node scripts/simulate.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

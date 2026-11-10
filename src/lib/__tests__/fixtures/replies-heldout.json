@@ -1,0 +1,232 @@
+[
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Thanks, but my nephew built our site and we like it."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Kindly take my address out of your database."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "We closed the shop last year."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Nope, good luck though."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Not something we want. Cheers."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "I get ten of these a week. No."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "We handle marketing in house."
+ },
+ {
+  "lang": "en",
+  "category": "odmowa",
+  "text": "Don't write to me again."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Dziękuję, mam swojego informatyka."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Proszę mnie skreślić z listy."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Nie skorzystam, pozdrawiam."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Nie potrzeba mi tego."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Już nie prowadzę działalności."
+ },
+ {
+  "lang": "pl",
+  "category": "odmowa",
+  "text": "Odpuść sobie."
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "Where'd you find my info?"
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "Sounds like a scam to me."
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "Is this a real person or AI?"
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "I never signed up for anything. Who sold you my email?"
+ },
+ {
+  "lang": "en",
+  "category": "nieufnosc",
+  "text": "Fake. Blocked."
+ },
+ {
+  "lang": "pl",
+  "category": "nieufnosc",
+  "text": "Skąd Pani ma mój adres?"
+ },
+ {
+  "lang": "pl",
+  "category": "nieufnosc",
+  "text": "Kolejny naciągacz."
+ },
+ {
+  "lang": "pl",
+  "category": "nieufnosc",
+  "text": "To legalne w ogóle? Zgłoszę to."
+ },
+ {
+  "lang": "pl",
+  "category": "nieufnosc",
+  "text": "Kim pan w ogóle jest?"
+ },
+ {
+  "lang": "en",
+  "category": "nie_teraz",
+  "text": "Swamped until fall, ask me then."
+ },
+ {
+  "lang": "en",
+  "category": "nie_teraz",
+  "text": "Not this quarter."
+ },
+ {
+  "lang": "en",
+  "category": "nie_teraz",
+  "text": "Maybe once the slow season hits."
+ },
+ {
+  "lang": "pl",
+  "category": "nie_teraz",
+  "text": "Teraz nie dam rady, może zimą."
+ },
+ {
+  "lang": "pl",
+  "category": "nie_teraz",
+  "text": "Wrócimy do tematu w nowym roku."
+ },
+ {
+  "lang": "en",
+  "category": "cena",
+  "text": "What's the damage?"
+ },
+ {
+  "lang": "en",
+  "category": "cena",
+  "text": "Is it really $1,500 total or are there extras?"
+ },
+ {
+  "lang": "en",
+  "category": "cena",
+  "text": "Ballpark figure?"
+ },
+ {
+  "lang": "pl",
+  "category": "cena",
+  "text": "Jakie są koszty utrzymania?"
+ },
+ {
+  "lang": "pl",
+  "category": "cena",
+  "text": "Ile wyjdzie z domeną?"
+ },
+ {
+  "lang": "en",
+  "category": "zainteresowany",
+  "text": "Alright, let's see it."
+ },
+ {
+  "lang": "en",
+  "category": "zainteresowany",
+  "text": "I could use a better site honestly. What do you need from me?"
+ },
+ {
+  "lang": "en",
+  "category": "zainteresowany",
+  "text": "Shoot me the mockup."
+ },
+ {
+  "lang": "en",
+  "category": "zainteresowany",
+  "text": "Call my cell after 5."
+ },
+ {
+  "lang": "pl",
+  "category": "zainteresowany",
+  "text": "Dobra, niech pan pokaże."
+ },
+ {
+  "lang": "pl",
+  "category": "zainteresowany",
+  "text": "Można zobaczyć jakiś przykład?"
+ },
+ {
+  "lang": "pl",
+  "category": "zainteresowany",
+  "text": "Zadzwoń pan jutro rano."
+ },
+ {
+  "lang": "en",
+  "category": "pytanie",
+  "text": "Do you host it too?"
+ },
+ {
+  "lang": "en",
+  "category": "pytanie",
+  "text": "How long have you been doing this?"
+ },
+ {
+  "lang": "pl",
+  "category": "pytanie",
+  "text": "Czy strona będzie działać na telefonie?"
+ },
+ {
+  "lang": "en",
+  "category": "inne",
+  "text": "K"
+ },
+ {
+  "lang": "en",
+  "category": "inne",
+  "text": "Forwarded to the owner."
+ },
+ {
+  "lang": "pl",
+  "category": "inne",
+  "text": "Dobrze wiedzieć."
+ }
+]
