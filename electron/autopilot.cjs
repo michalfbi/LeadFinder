@@ -193,6 +193,13 @@ function createAutopilot(d) {
 
   async function handleCallback(chatId, data) {
     if (!ownChat(chatId)) return;
+    // Decyzje ze skrzynki odpowiedzi: wysłać szkic, pominąć albo zablokować kontakt.
+    if (data.startsWith('INBOX:')) {
+      let text;
+      try { text = await d.inboxCallback?.(data); } catch (e) { text = `⚠️ ${e.message}`; }
+      if (text) await notify('sendMessage', { chat_id: chatId, text });
+      return;
+    }
     if (data.startsWith('SPEED:')) {
       const [, mode, id] = data.split(':');
       const approval = state.remote.speedApproval;
@@ -419,6 +426,8 @@ function createAutopilot(d) {
       [{ text: '❌ Odrzuć wyniki', callback_data: 'REMOTE_DISCARD' }],
     ] } : undefined });
   }
-  return {snapshot,configure,run,action,report,start,remoteScan,remoteAdd,remoteReport,handleCommand,handleCallback,test:()=>telegram('getMe',{}), testReport:()=>report(state.batches.find(b=>b.status==='pending') || {id:'test',source:'Test połączenia',leads:[]})};
+  /** Wiadomość do właściciela (np. nowa odpowiedź klienta). Bez skonfigurowanego Telegrama nic nie robi. */
+  const notifyOwner = (text, reply_markup) => (state.remote.encryptedToken && state.remote.chatId) ? notify('sendMessage', { chat_id: state.remote.chatId, text: String(text).slice(0, 3900), ...(reply_markup ? { reply_markup } : {}) }) : Promise.resolve(null);
+  return {notifyOwner,snapshot,configure,run,action,report,start,remoteScan,remoteAdd,remoteReport,handleCommand,handleCallback,test:()=>telegram('getMe',{}), testReport:()=>report(state.batches.find(b=>b.status==='pending') || {id:'test',source:'Test połączenia',leads:[]})};
 }
 module.exports={createAutopilot,eligible,parseSkanCommand};

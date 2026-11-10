@@ -76,6 +76,11 @@ jobs:
       - name: Testy
         run: npx vitest run
 
+      # Wirtualny świat: 5 symulacji obiegu wysyłka → odpowiedź → skrzynka na udawanej poczcie.
+      # Raport trafia do podsumowania przebiegu; złamana zasada zatrzymuje budowanie.
+      - name: Wirtualny świat (sprawdzian bez prawdziwej wysyłki)
+        run: node scripts/simulate.mjs
+
       - name: Zbuduj i spakuj aplikację
         env:
           APP_VERSION: ${{ steps.version.outputs.version }}
@@ -87,8 +92,14 @@ jobs:
           APP="release/LeadFinder-darwin-arm64/LeadFinder.app"
           test -f "$APP/Contents/Resources/app/dist/client/_shell.html"
           codesign --verify --deep --strict "$APP"
+          # Startujemy na osobnym folderze danych ze starymi plikami JSON, żeby sprawdzić
+          # w prawdziwej aplikacji migrację do bazy SQLite.
+          DATA="$RUNNER_TEMP/leadfinder-dane"
+          mkdir -p "$DATA"
+          echo '[{"id":"ci-1","nazwa":"Test A","telefon":"+48601234567","status":"nowy"},{"id":"ci-2","nazwa":"Test B","telefon":"+48602345678","status":"nowy"}]' > "$DATA/leads.json"
+          echo '{"601234567":"2026-01-01T10:00:00.000Z"}' > "$DATA/sms-ledger.json"
           # Uruchamiamy proces główny na kilka sekund: błąd require() lub składni zakończyłby go od razu.
-          "$APP/Contents/MacOS/LeadFinder" > launch.log 2>&1 &
+          "$APP/Contents/MacOS/LeadFinder" --user-data-dir="$DATA" > launch.log 2>&1 &
           PID=$!
           sleep 12
           if ! kill -0 "$PID" 2>/dev/null; then
@@ -97,7 +108,16 @@ jobs:
             exit 1
           fi
           kill "$PID" || true
+          sleep 2
           cat launch.log
+          ls -la "$DATA"
+          test -f "$DATA/leadfinder.sqlite" || { echo "::error::Baza SQLite nie powstała"; exit 1; }
+          test -f "$DATA/leads.migrated.json" || { echo "::error::Migracja z leads.json się nie wykonała"; exit 1; }
+          test ! -f "$DATA/leads.json"
+          COUNT=$(sqlite3 "$DATA/leadfinder.sqlite" "SELECT COUNT(*) FROM leads WHERE kind='sms'")
+          LEDGER=$(sqlite3 "$DATA/leadfinder.sqlite" "SELECT COUNT(*) FROM send_ledger")
+          echo "Leady w bazie: $COUNT, wpisy rejestru wysyłek: $LEDGER"
+          [ "$COUNT" = "2" ] && [ "$LEDGER" = "1" ] || { echo "::error::Migracja zgubiła dane"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:

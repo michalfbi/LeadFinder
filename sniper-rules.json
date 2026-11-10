@@ -1,8 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "defaults": {
     "minScore": 75,
-    "minScoreRange": [50, 95],
+    "minScoreRange": [
+      50,
+      95
+    ],
     "topLimit": 50,
     "dailySmsLimit": 50
   },
@@ -32,23 +35,215 @@
     "outdatedBeforeYear": 2020,
     "newCompanyDays": 14
   },
-  "corporateWords": ["S.A.", "Sp.k.", "Sp. k.", "Group", "Grupa", "Polska", "Market", "Sieć", "Holding"],
-  "socialHosts": ["facebook.com", "fb.com", "fb.me", "instagram.com", "linktr.ee", "tiktok.com", "wa.me", "m.me"],
-  "freeBuilderHosts": ["wixsite.com", "oferteo.pl", "blogspot.com", "stronygratis", "webnode", "weebly.com", "site123.me", "business.site", "mozello", "strikingly.com", "wordpress.com", "jimdosite.com", "jimdofree.com"],
-  "freeMailDomains": ["gmail.com", "wp.pl", "onet.pl", "onet.eu", "op.pl", "interia.pl", "interia.eu", "poczta.fm", "o2.pl", "tlen.pl", "vp.pl", "gazeta.pl", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"],
+  "corporateWords": [
+    "S.A.",
+    "Sp.k.",
+    "Sp. k.",
+    "Group",
+    "Grupa",
+    "Polska",
+    "Market",
+    "Sieć",
+    "Holding"
+  ],
+  "socialHosts": [
+    "facebook.com",
+    "fb.com",
+    "fb.me",
+    "instagram.com",
+    "linktr.ee",
+    "tiktok.com",
+    "wa.me",
+    "m.me"
+  ],
+  "freeBuilderHosts": [
+    "wixsite.com",
+    "oferteo.pl",
+    "blogspot.com",
+    "stronygratis",
+    "webnode",
+    "weebly.com",
+    "site123.me",
+    "business.site",
+    "mozello",
+    "strikingly.com",
+    "wordpress.com",
+    "jimdosite.com",
+    "jimdofree.com"
+  ],
+  "freeMailDomains": [
+    "gmail.com",
+    "wp.pl",
+    "onet.pl",
+    "onet.eu",
+    "op.pl",
+    "interia.pl",
+    "interia.eu",
+    "poczta.fm",
+    "o2.pl",
+    "tlen.pl",
+    "vp.pl",
+    "gazeta.pl",
+    "yahoo.com",
+    "outlook.com",
+    "hotmail.com",
+    "icloud.com"
+  ],
   "highTicketNicheIds": [
-    "meble-kuchnie", "klima-pompy", "mikrocement", "foto-slub", "fotobudka-360", "wrapping-ppf", "minikoparka", "glamping",
-    "meble-loft", "architekt-wnetrz", "smart-home", "brukarstwo", "dekarstwo", "chiptuning", "med-estetyczna", "stomatologia",
-    "sauna-mobilna", "namioty", "drink-bar", "auta-usa", "kancelarie-b2b"
+    "meble-kuchnie",
+    "klima-pompy",
+    "mikrocement",
+    "foto-slub",
+    "fotobudka-360",
+    "wrapping-ppf",
+    "minikoparka",
+    "glamping",
+    "meble-loft",
+    "architekt-wnetrz",
+    "smart-home",
+    "brukarstwo",
+    "dekarstwo",
+    "chiptuning",
+    "med-estetyczna",
+    "stomatologia",
+    "sauna-mobilna",
+    "namioty",
+    "drink-bar",
+    "auta-usa",
+    "kancelarie-b2b"
   ],
   "pills": [
-    { "nicheId": "meble-kuchnie", "label": "Stolarze na wymiar" },
-    { "nicheId": "klima-pompy", "label": "Klimatyzacja i Pompy" },
-    { "nicheId": "mikrocement", "label": "Mikrocement i Żywice" },
-    { "nicheId": "foto-slub", "label": "Fotograf/Kamerzysta Ślubny" },
-    { "nicheId": "fotobudka-360", "label": "Fotobudka 360 & Eventy" },
-    { "nicheId": "wrapping-ppf", "label": "Auto Detailing & PPF" },
-    { "nicheId": "minikoparka", "label": "Usługi Minikoparką" },
-    { "nicheId": "glamping", "label": "Domki na wynajem z balią" }
-  ]
+    {
+      "nicheId": "meble-kuchnie",
+      "label": "Stolarze na wymiar"
+    },
+    {
+      "nicheId": "klima-pompy",
+      "label": "Klimatyzacja i Pompy"
+    },
+    {
+      "nicheId": "mikrocement",
+      "label": "Mikrocement i Żywice"
+    },
+    {
+      "nicheId": "foto-slub",
+      "label": "Fotograf/Kamerzysta Ślubny"
+    },
+    {
+      "nicheId": "fotobudka-360",
+      "label": "Fotobudka 360 & Eventy"
+    },
+    {
+      "nicheId": "wrapping-ppf",
+      "label": "Auto Detailing & PPF"
+    },
+    {
+      "nicheId": "minikoparka",
+      "label": "Usługi Minikoparką"
+    },
+    {
+      "nicheId": "glamping",
+      "label": "Domki na wynajem z balią"
+    }
+  ],
+  "offers": {
+    "website": {
+      "label": "Strony WWW",
+      "icon": "🌐",
+      "short": "strona www",
+      "defaultPrice": "1490 zł na gotowo, 0 zł zaliczki",
+      "templateLabelPrefix": "🎯 Snajper"
+    },
+    "video_ads": {
+      "label": "Reklamy wideo AI",
+      "icon": "🎬",
+      "short": "reklama wideo",
+      "defaultPrice": "pakiet 3 wersji reklamy od 1490 zł",
+      "templateLabelPrefix": "🎬 Wideo"
+    }
+  },
+  "video": {
+    "points": {
+      "owner": 15,
+      "adPixels": 30,
+      "workingSite": 10,
+      "socialActive": 15,
+      "promotedAd": 25,
+      "reviewLeader": 20,
+      "visualNiche": 15,
+      "highTicket": 15
+    },
+    "thresholds": {
+      "maxReviews": 400,
+      "minReviewsAlive": 3,
+      "leaderMinReviews": 15,
+      "leaderMinRating": 4.5
+    },
+    "visualNicheIds": [
+      "wrapping-ppf",
+      "chiptuning",
+      "felgi-cnc",
+      "szyby-caraudio",
+      "wynajem-aut",
+      "auta-usa",
+      "fotobudka-360",
+      "dj-wesele",
+      "drink-bar",
+      "dekoracje-slubne",
+      "namioty",
+      "trener-ems",
+      "pilates",
+      "mma-boks",
+      "tatuaz",
+      "barber",
+      "makijaz-rzesy",
+      "meble-kuchnie",
+      "mikrocement",
+      "meble-loft",
+      "architekt-wnetrz",
+      "klima-pompy",
+      "smart-home",
+      "brukarstwo",
+      "dekarstwo",
+      "mycie-cisnieniowe",
+      "groomer",
+      "glamping",
+      "sauna-mobilna",
+      "quady-kajaki"
+    ],
+    "pills": [
+      {
+        "nicheId": "wrapping-ppf",
+        "label": "Auto Detailing & PPF"
+      },
+      {
+        "nicheId": "meble-kuchnie",
+        "label": "Kuchnie na wymiar"
+      },
+      {
+        "nicheId": "glamping",
+        "label": "Domki z balią"
+      },
+      {
+        "nicheId": "fotobudka-360",
+        "label": "Fotobudka 360 & Eventy"
+      },
+      {
+        "nicheId": "wynajem-aut",
+        "label": "Wynajem aut"
+      },
+      {
+        "nicheId": "auta-usa",
+        "label": "Import aut z USA"
+      },
+      {
+        "nicheId": "klima-pompy",
+        "label": "Klimatyzacja i Pompy"
+      },
+      {
+        "nicheId": "mikrocement",
+        "label": "Mikrocement i Żywice"
+      }
+    ]
+  }
 }
